@@ -225,6 +225,8 @@ The package's own messages are English only, by design. Applications that show e
 
 Semantic versioning. `1.x` ships in Swift 5 language mode: `AppleScriptObject` carries `[String: Any]`, which is not `Sendable`, and the API is synchronous. A future `2.0` is planned to adopt Swift 6 strict concurrency with a typed, `Sendable` variable representation.
 
+Also on the list: converting Swift arrays, dictionaries and tuples straight to AppleScript lists and records, so you don't have to build that source by hand and escape it yourself — see [#1](https://github.com/fredsimard/SwiftAppleScriptBridge/issues/1).
+
 ## License
 
 MIT. See [LICENSE](LICENSE).
