@@ -1,0 +1,40 @@
+included:
+  - Sources
+  - Tests
+
+disabled_rules:
+  # The codebase aligns switch cases and their bodies into columns for
+  # readability, which this rule reads as stray whitespace around colons.
+  - colon
+  # Doc comments and AppleScript templates are deliberately not wrapped.
+  - line_length
+  # `executeAppleScript(_ AppleScript:)` keeps its original capitalized
+  # parameter name for source compatibility.
+  - identifier_name
+  # Test files are one type per concern, not one per file.
+  - type_name
+
+opt_in_rules:
+  - empty_count
+  - force_unwrapping
+  - redundant_nil_coalescing
+  - unneeded_parentheses_in_closure_argument
+
+force_unwrapping:
+  severity: warning
+
+cyclomatic_complexity:
+  warning: 15
+  error: 25
+
+function_body_length:
+  warning: 80
+  error: 120
+
+type_body_length:
+  warning: 300
+  error: 400
+
+file_length:
+  warning: 500
+  error: 800
