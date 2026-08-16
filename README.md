@@ -82,6 +82,20 @@ let countOpenWindows = AppleScriptBridge.AppleScriptObject(
 let count = try AppleScriptBridge.executeAppleScript(countOpenWindows) as? Int ?? 0
 ```
 
+There's a complete example of the one-file-of-scripts layout in [Examples/AppleScripts.swift](Examples/AppleScripts.swift), with a script for every return type and the call site that goes with it.
+
+### If your project uses Swift 6 language mode
+
+`AppleScriptObject` holds a `[String: Any]` of variables, so it can't be `Sendable`, and Swift 6 rejects a `static let` of a non-`Sendable` type. Declaring your scripts as static constants — which is what I'd recommend, and what the example file does — therefore fails to compile with a message like *"static property 'countOpenWindows' is not concurrency-safe"*.
+
+Mark them `nonisolated(unsafe)` and it compiles in both language modes:
+
+```swift
+nonisolated(unsafe) static let countOpenWindows = AppleScriptBridge.AppleScriptObject(
+```
+
+It reads worse than it behaves: these are immutable value types built once and never written to, so the unsafety is theoretical. Projects on Swift 5 mode need none of this. Getting rid of the keyword entirely is tracked in [#2](https://github.com/fredsimard/SwiftAppleScriptBridge/issues/2).
+
 ### Variables and types
 
 Placeholders are written `$key`. Variables may be supplied when the object is declared (`variables:`) or at call time (`with:`); runtime values win on conflict.
