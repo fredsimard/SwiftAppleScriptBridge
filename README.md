@@ -4,13 +4,9 @@ A small, typed bridge between Swift and AppleScript for macOS applications.
 
 ## History
 
-I had a personal need for a bridge like this, for apps that need to drive other apps — mostly Adobe InDesign. I couldn't find anything that did what I wanted, so I built my own.
+I had a personal need for a bridge like this, for apps that need to drive other apps — mostly Adobe InDesign. I couldn't find anything that did what I wanted, so I built my own. It works really well so I thought why not share it and hopefully improve it with contributions?
 
 Don't get me wrong, AppleScriptObjC is a really good framework, but I wanted direct interaction between Swift and AppleScript, no middleman, plus easy conversion of booleans, strings, records, lists and integers between the two.
-
-The best way to get speed out of this bridge is to do all the logic you can in Swift, and use the package only to fire off one task at a time at the app you're controlling. In other words, don't ask AppleScript to build lists or do calculations — only to tell the other app to do the things that only AppleScript can do.
-
-The gains over a pure AppleScript script are very significant, and doing the heavy lifting in Swift is the main reason. Plus you get the whole Swift platform along with it.
 
 ## What it does
 
@@ -19,6 +15,18 @@ It wraps `NSAppleScript` with three things that are tedious to get right by hand
 1. **Templated scripts.** Write AppleScript once with `$key` placeholders and fill them at call time.
 1. **Automatic escaping.** Every substituted `String` is escaped before it reaches the script, so a folder named `Client "A"\B` cannot terminate a string literal and inject AppleScript.
 1. **Typed results.** Declare what a script returns — `Int`, `String`, `Bool`, a list, a flat record, or JSON — and get a parsed Swift value back.
+
+## How to use it
+
+The best way to get speed out of this bridge is to do all the logic you can in Swift, and use the package only to fire off one task at a time at the app you're controlling. In other words, don't ask AppleScript to build lists or do calculations — only to tell the other app to do the things that only AppleScript can do.
+
+The gains over a pure AppleScript solution are significant, and doing the heavy lifting in Swift is the main reason. You get the whole Swift platform, plus the small things: write a `///` comment above each `AppleScriptObject` and it shows up in Quick Help wherever you call it, and you get autocompletion.
+
+You can scatter your scripts across the classes that use them, of course, but my suggestion is to put them all in one file — `AppleScripts.swift`, say — one `AppleScriptObject` each, documented, and call them from wherever you need. Everything is in one place, which makes them easier to find and maintain.
+
+## How to contribute
+
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Distribution: read this before you adopt the package
 
@@ -91,6 +99,7 @@ Strings are escaped on the way in (backslashes and double quotes), which is why 
 | `Bool` | `true` / `false` | `$key` | `boolean` | — |
 | `Bool` | `true` / `false` | `"$key"` | `text` | `as boolean` |
 | `AppleScriptRawValue` | verbatim source | `$key` | whatever it evaluates to | — |
+| object references | ⚠️ Not available. See warning below | — | — | — |
 | anything else | escaped `String(describing:)` | `"$key"` | `text` | parse manually |
 
 ```swift
@@ -116,6 +125,24 @@ try AppleScriptBridge.executeAppleScript(script, with: [
     "flag": true
 ])
 ```
+
+> [!IMPORTANT]
+> Application-specific object references can't come back to Swift. Only the types in the table above survive the trip.
+>
+> ```applescript
+> tell application id "com.adobe.InDesign" to set newPage to make new page
+> ```
+>
+> `newPage` is a live reference to an object inside InDesign, not data. There's no Swift equivalent, and asking for it as `.string` gets you whatever the app's coercion happens to produce — usually something unusable, sometimes an error. The same goes for aliases, file specifiers, dates, and anything else the app defines.
+>
+> Keep those references inside AppleScript. If you need to identify the object later, return something addressable instead — its id, name, or index — and use that to look it up on the next call:
+>
+> ```applescript
+> tell application id "com.adobe.InDesign"
+>     set newPage to make new page
+>     return id of newPage
+> end tell
+> ```
 
 ### Escaping, and how to opt out
 
