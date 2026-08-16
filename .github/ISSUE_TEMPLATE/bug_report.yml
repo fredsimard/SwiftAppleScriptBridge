@@ -1,0 +1,86 @@
+name: Bug report
+description: Something isn't working the way the documentation says it should.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file this. Please fill in as much as you can — the version and OS fields in particular save a lot of back and forth.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What did you expect, and what did you get instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: How to reproduce
+      description: The smallest `AppleScriptObject` and call that shows the problem. Include the AppleScript source.
+      render: swift
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Prepared script and error
+      description: |
+        The script the bridge actually compiled, plus any error text. Set `AppleScriptBridge.logHandler` (or run a DEBUG build) to capture the prepared source.
+      render: text
+
+  - type: input
+    id: package-version
+    attributes:
+      label: Package version
+      placeholder: "1.0.0"
+    validations:
+      required: true
+
+  - type: input
+    id: macos-version
+    attributes:
+      label: macOS version
+      placeholder: "15.3 (Apple silicon)"
+    validations:
+      required: true
+
+  - type: input
+    id: xcode-version
+    attributes:
+      label: Xcode / Swift version
+      placeholder: "Xcode 16.2, Swift 6.0"
+    validations:
+      required: true
+
+  - type: input
+    id: target-app
+    attributes:
+      label: Application being controlled
+      description: Which app the script targets, and its version.
+      placeholder: "Finder, or Adobe InDesign 2025 (20.0)"
+
+  - type: dropdown
+    id: method
+    attributes:
+      label: Execution method
+      options:
+        - executeAppleScript(_:with:)
+        - executeAppleScriptViaCommandLine(_:with:)
+        - Both
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: The app is not sandboxed, and has the `com.apple.security.automation.apple-events` entitlement and an `NSAppleEventsUsageDescription` key.
+          required: true
+        - label: The same script works when run directly in Script Editor.
+        - label: I searched existing issues.
+          required: true

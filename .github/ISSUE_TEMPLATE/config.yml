@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: AppleScript itself isn't working
+    url: https://developer.apple.com/library/archive/documentation/AppleScript/Conceptual/AppleScriptLangGuide/
+    about: If the script fails in Script Editor too, the issue is with the script or the target app, not with this package.
