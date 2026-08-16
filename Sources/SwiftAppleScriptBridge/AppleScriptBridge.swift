@@ -146,7 +146,7 @@ public class AppleScriptBridge: NSObject {
         switch AppleScript.returnType {
             case .int:    return Int(result)
             case .string: return result
-            case .bool:   return (Int(result) ?? 0) != 0
+            case .bool:   return result.caseInsensitiveCompare("true") == .orderedSame || (Int(result) ?? 0) != 0
             case .list:   return result.components(separatedBy: "\r")
             case .record: return result.parseSimpleAppleScriptRecord()
             case .json:   return result.parseJSONStringFromAppleScript()
