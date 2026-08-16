@@ -64,7 +64,11 @@ dependencies: [
 > [!NOTE]
 > `tell application id` + the app identifier is used in the docs, but nothing prevents you from using the classic `tell application "App name"`.
 
+### Full API documentation
 See the full API reference here: [Documentation/API.md](Documentation/API.md).
+
+### `AppleScript.swift` example
+Complete example of the one-file-of-scripts layout here: [Examples/AppleScripts.swift](Examples/AppleScripts.swift) (with a script for every return type and the call site that goes with it).
 
 ```swift
 import SwiftAppleScriptBridge
@@ -82,7 +86,6 @@ let countOpenWindows = AppleScriptBridge.AppleScriptObject(
 let count = try AppleScriptBridge.executeAppleScript(countOpenWindows) as? Int ?? 0
 ```
 
-There's a complete example of the one-file-of-scripts layout in [Examples/AppleScripts.swift](Examples/AppleScripts.swift), with a script for every return type and the call site that goes with it.
 
 ### If your project uses Swift 6 language mode
 
