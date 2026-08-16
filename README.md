@@ -88,7 +88,7 @@ Placeholders are written `$key`. Variables may be supplied when the object is de
 
 Substitution is textual: `preparedScript(with:)` replaces each `$key` with rendered text, then AppleScript compiles the result. So the type a script receives is decided by **how you wrote the placeholder**, not by the Swift type alone. 
 
-A placeholder inside quotes — i.e. `"$key"` — always yields AppleScript **text**. A bare placeholder — `$key` — yields whatever literal the value rendered to, including the coercion (`$key as integer`, `$key as string`, etc.).
+A placeholder inside quotes — i.e. `"$key"` — always yields AppleScript **text**, whatever the Swift value was, so a number or a boolean written that way needs coercing in the script (`"$key" as integer`). A bare placeholder — `$key` — yields the literal the value rendered to, already typed and needing nothing further.
 
 > [!NOTE]
 > Keys are substituted longest-first, so `$page` never eats the front of `$pageNumber`.
