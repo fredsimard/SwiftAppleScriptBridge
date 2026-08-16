@@ -146,15 +146,60 @@ try AppleScriptBridge.executeAppleScript(script, with: [
 
 ### Escaping, and how to opt out
 
-Every `String` value is escaped on substitution. When a value is *meant* to be AppleScript source — a record list you built yourself, for example — wrap it in `AppleScriptRawValue` to insert it verbatim:
+Every `String` value is escaped on substitution. That's what you want almost all of the time — a path or a filename should arrive as *data*, not as code.
+
+But sometimes the thing you're substituting really is AppleScript source. There's no automatic conversion for a Swift array, for instance, so if you want AppleScript to receive a list you have to write that list out yourself and tell the bridge not to escape it. That's what `AppleScriptRawValue` is for:
 
 ```swift
 "filesArray": AppleScriptBridge.AppleScriptRawValue(records)  // inserted as code
 "filePath":   url.path(percentEncoded: false)                 // inserted as escaped data
 ```
 
+#### A worked example
+
+Say you want to hand AppleScript a list of file paths. You build the list in Swift:
+
+```swift
+let paths = urls.map { "\"\($0.path(percentEncoded: false).appleScriptStringEscaped)\"" }
+let list = "{" + paths.joined(separator: ", ") + "}"
+
+let script = AppleScriptBridge.AppleScriptObject(
+    name: "processFiles",
+    returnType: .int,
+    script: """
+        set theFiles to $files
+        repeat with aPath in theFiles
+            -- do something with aPath
+        end repeat
+        return count of theFiles
+    """
+)
+
+try AppleScriptBridge.executeAppleScript(script, with: [
+    "files": AppleScriptBridge.AppleScriptRawValue(list)
+])
+```
+
+Note the `.appleScriptStringEscaped` on each path, and the placeholder written bare as `$files` rather than `"$files"`. You skipped the bridge's escaping by using `AppleScriptRawValue`, so escaping each individual value is now your job.
+
+#### What happens if you forget
+
+Filenames can contain quotes. Take a file actually named `My "best" shot.jpg`. Without escaping, your generated list is:
+
+```applescript
+{"/Photos/My "best" shot.jpg"}
+```
+
+AppleScript reads that as the string `/Photos/My `, followed by a stray `best`, and the script fails to compile. That's the harmless outcome. A filename crafted on purpose can close the string and append its own commands, which then run with your app's automation permissions — that's the reason the escaping exists.
+
+With `.appleScriptStringEscaped` applied, the same file comes out as valid, inert text:
+
+```applescript
+{"/Photos/My \"best\" shot.jpg"}
+```
+
 > [!WARNING]
-> Never wrap unvalidated input in `AppleScriptRawValue`. Anything wrapped there is executed as code. Use `String.appleScriptStringEscaped` on each field when assembling raw source by hand.
+> Never wrap unvalidated input in `AppleScriptRawValue` — anything wrapped there is executed as code. Only use it for source you generated yourself, and escape every value you interpolate into that source with `String.appleScriptStringEscaped`.
 
 ### Return types
 
