@@ -59,11 +59,11 @@ public class AppleScriptBridge: NSObject {
     ///   - AppleScript: The `AppleScriptObject` to execute.
     ///   - runtimeVariables: Variables resolved at call time, overriding the object's predefined ones of the
     ///   same name. Defaults to `nil`.
-    /// - Returns: The result of the script, cast to the expected type (`Int`, `String`, `Bool`, `[String]`, or `nil`).
+    /// - Returns: The result of the script, cast to the expected type (`Int`, `String`, `Bool`, `[String]`,
+    /// `[String: Any]`, or `nil`).
     /// - Throws:
     ///   - `AppleScriptError.failedToInitScript` if the script cannot be initialized.
     ///   - `AppleScriptError.executionError` if execution fails and returns an error.
-    ///   - `AppleScriptError.failedToReadOutput` if the result can't be parsed.
     ///
     /// - Note: For `.list` and `.record`, raw strings are returned and may need further parsing.
     ///
@@ -111,7 +111,8 @@ public class AppleScriptBridge: NSObject {
     ///   - AppleScript: The `AppleScriptObject` to execute.
     ///   - runtimeVariables: Variables resolved at call time, overriding the object's predefined ones of the
     ///   same name. Defaults to `nil`.
-    /// - Returns: The result of the script, cast to the expected type (`Int`, `String`, `Bool`, `[String]`, or `nil`).
+    /// - Returns: The result of the script, cast to the expected type (`Int`, `String`, `Bool`, `[String]`,
+    /// `[String: Any]`, or `nil`).
     /// - Throws:
     ///   - `AppleScriptError.executionError` if the process fails to launch or run.
     ///   - `AppleScriptError.failedToReadOutput` if the output cannot be interpreted.
@@ -120,6 +121,9 @@ public class AppleScriptBridge: NSObject {
     ///
     /// - Note: Spawning `/usr/bin/osascript` is blocked by the App Sandbox. Use this only from a
     /// non-sandboxed application.
+    ///
+    /// - Note: The fully substituted script is passed to `osascript` as a command-line argument, where any
+    /// local process can read it with `ps`. Prefer `executeAppleScript(_:with:)` if variables carry secrets.
     public static func executeAppleScriptViaCommandLine(_ AppleScript: AppleScriptObject, with runtimeVariables: [String: Any]? = nil) throws -> Any? {
         let process = Process()
         let pipe = Pipe()

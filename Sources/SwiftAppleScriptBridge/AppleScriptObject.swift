@@ -71,7 +71,7 @@ extension AppleScriptBridge {
     /// - Properties:
     ///   - `name`: Mandatory. A unique name identifying the script. Useful for logging or display.
     ///   - `returnType`: The expected return type from the AppleScript execution. Defaults to `.none` if no value is provided.
-    ///   - `variables`: A optional dictionary of predefined variables used to replace placeholders in the script. `String` values are escaped on substitution; wrap AppleScript source in `AppleScriptRawValue` to insert it verbatim.
+    ///   - `variables`: An optional dictionary of predefined variables used to replace placeholders in the script. `String` values are escaped on substitution; wrap AppleScript source in `AppleScriptRawValue` to insert it verbatim.
     ///   - `script`: Mandatory. The raw AppleScript source, with optional `$key` placeholders for dynamic substitution with elements in `variables` when using the `preparedScript` function. A placeholder holding text must be written inside a quoted literal (`"$key"`); one holding a number or a boolean must be written bare (`$key`).
     ///
     /// - Initializer:
