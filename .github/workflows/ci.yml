@@ -59,6 +59,8 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v7.0.1
+      - name: Untrust unused runner tap
+        run: brew untap aws/tap || true
       - name: Install SwiftLint
         run: brew install swiftlint
       - name: Lint
