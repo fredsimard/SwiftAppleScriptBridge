@@ -22,6 +22,38 @@ jobs:
       - name: Test
         run: swift test -v
 
+  examples:
+    name: Build examples
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      # The example file is not part of any target, so it would otherwise rot
+      # unnoticed. Build it the way a consumer would: as its own package
+      # depending on this one by path.
+      - name: Build Examples against the package
+        run: |
+          mkdir -p /tmp/example-consumer/Sources/ExampleConsumer
+          cp Examples/*.swift /tmp/example-consumer/Sources/ExampleConsumer/
+          cat > /tmp/example-consumer/Package.swift <<'MANIFEST'
+          // swift-tools-version: 6.0
+          import PackageDescription
+
+          let package = Package(
+              name: "ExampleConsumer",
+              platforms: [.macOS(.v13)],
+              dependencies: [.package(path: "PACKAGE_PATH")],
+              targets: [
+                  .target(
+                      name: "ExampleConsumer",
+                      dependencies: [.product(name: "SwiftAppleScriptBridge", package: "SwiftAppleScriptBridge")],
+                      swiftSettings: [.swiftLanguageMode(.v5)]
+                  )
+              ]
+          )
+          MANIFEST
+          sed -i '' "s|PACKAGE_PATH|$GITHUB_WORKSPACE|" /tmp/example-consumer/Package.swift
+          cd /tmp/example-consumer && swift build
+
   lint:
     name: SwiftLint
     runs-on: macos-latest
