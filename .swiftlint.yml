@@ -4,8 +4,10 @@ included:
 
 disabled_rules:
   # The codebase aligns switch cases and their bodies into columns for
-  # readability, which this rule reads as stray whitespace around colons.
+  # readability, which these rules read as stray whitespace around colons
+  # and as cases indented away from their closing brace.
   - colon
+  - switch_case_alignment
   # Doc comments and AppleScript templates are deliberately not wrapped.
   - line_length
   # `executeAppleScript(_ AppleScript:)` keeps its original capitalized
