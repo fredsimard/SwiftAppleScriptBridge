@@ -93,11 +93,11 @@ public class AppleScriptBridge: NSObject {
 
         switch AppleScript.returnType {
             case .int:    return Int(result.int32Value)
-            case .string: return result.stringValue ?? nil
+            case .string: return result.stringValue
             case .bool:   return result.int32Value != 0 ? true : false
-            case .list:   return result.stringValue?.components(separatedBy: .newlines) ?? nil
-            case .record: return result.stringValue?.parseSimpleAppleScriptRecord() ?? nil
-            case .json:   return result.stringValue?.parseJSONStringFromAppleScript() ?? nil
+            case .list:   return result.stringValue?.components(separatedBy: .newlines)
+            case .record: return result.stringValue?.parseSimpleAppleScriptRecord()
+            case .json:   return result.stringValue?.parseJSONStringFromAppleScript()
             case .none:   return nil
         }
     }

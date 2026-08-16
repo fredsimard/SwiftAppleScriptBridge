@@ -17,6 +17,9 @@ extension String {
     ///
     /// - Returns: A POSIX-style file system path as a `String`, or `nil` if the conversion fails.
     public func toPOSIXPath() -> String? {
+        // `1` is CFURLPathStyle.cfurlHFSPathStyle, which is deprecated in the Swift overlay but
+        // is still what this call needs; the raw value is fixed, so the initializer cannot fail.
+        // swiftlint:disable:next force_unwrapping
         guard let fileURL = CFURLCreateWithFileSystemPath(kCFAllocatorDefault, self as CFString?, CFURLPathStyle(rawValue: 1)!, self.hasSuffix(":")) else { return nil }
         return (fileURL as URL).path
     }
