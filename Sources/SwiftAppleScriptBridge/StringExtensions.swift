@@ -26,15 +26,27 @@ extension String {
 
     /// Converts a POSIX path to an HFS-style path (e.g., `/Users/roger/Desktop` -> `Macintosh HD:Users:roger:Desktop`).
     ///
-    /// - Returns: An HFS-style path, or `nil` if the startup disk name cannot be read.
+    /// An HFS path is volume-relative: it starts with the name of the volume holding the file, not with the
+    /// startup disk. Both the volume name and the mount point are read from the file itself, so a path on an
+    /// external drive, a disk image or a network share converts correctly (`/Volumes/Backup/notes.txt` ->
+    /// `Backup:notes.txt`).
+    ///
+    /// - Returns: An HFS-style path, or `nil` if the volume cannot be determined.
+    ///
+    /// - Important: The path must exist. Volume information is read from the file system, so this returns
+    /// `nil` for a file that has not been created yet.
     ///
     /// - Note: Recent versions of most scriptable applications expect POSIX paths, which are better passed as
     /// `POSIX file` specifiers. This is kept for the applications and script dialects that still want HFS paths.
     public func toHFSPath() -> String? {
         let posixURL = URL(fileURLWithPath: self)
-        guard let volumeName = startupDiskName() else { return nil }
-        let hfsPath = ([volumeName] + posixURL.pathComponents.dropFirst()).joined(separator: ":")
-        return hfsPath
+        guard let values = try? posixURL.resourceValues(forKeys: [.volumeNameKey, .volumeURLKey]),
+              let volumeName = values.volumeName,
+              let volumeURL = values.volume else { return nil }
+
+        // Drop the mount point's own components, so what remains is the path within the volume.
+        let relativeComponents = posixURL.pathComponents.dropFirst(volumeURL.pathComponents.count)
+        return ([volumeName] + relativeComponents).joined(separator: ":")
     }
 }
 
@@ -44,24 +56,11 @@ extension URL {
     ///
     /// Delegates to `String.toHFSPath()` so both conversions cannot drift apart.
     ///
-    /// - Returns: An HFS-style path, or `nil` if the startup disk name cannot be read.
+    /// - Returns: An HFS-style path, or `nil` if the volume cannot be determined.
+    ///
+    /// - Important: The path must exist; see `String.toHFSPath()`.
     public func toHFSPath() -> String? {
         return self.path(percentEncoded: false).toHFSPath()
-    }
-}
-
-/// Retrieves the name of the macOS startup disk.
-///
-/// Reads the volume name straight from the root URL's resource values, which needs no subprocess and no
-/// Automation permission.
-///
-/// - Returns: The name of the startup disk as a `String`, or `nil` if it cannot be read.
-func startupDiskName() -> String? {
-    do {
-        return try URL(fileURLWithPath: "/").resourceValues(forKeys: [.volumeNameKey]).volumeName
-    } catch {
-        AppleScriptBridge.log("Error retrieving startup disk name: \(error)")
-        return nil
     }
 }
 

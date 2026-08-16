@@ -160,15 +160,17 @@ final class PathConversionTests: XCTestCase {
 
     /// Verifies that an HFS path round-trips to POSIX and back.
     func testHFSAndPOSIXRoundTrip() throws {
-        let posix = "/Users/roger/Desktop"
+        // An existing path: `toHFSPath()` reads the volume name and mount point from the file system.
+        let posix = NSHomeDirectory()
         let hfs = try XCTUnwrap(posix.toHFSPath())
-        XCTAssertTrue(hfs.hasSuffix(":Users:roger:Desktop"))
+        let expectedSuffix = ":" + URL(fileURLWithPath: posix).pathComponents.dropFirst().joined(separator: ":")
+        XCTAssertTrue(hfs.hasSuffix(expectedSuffix), "\(hfs) should end with \(expectedSuffix)")
         XCTAssertEqual(hfs.toPOSIXPath(), posix)
     }
 
     /// Verifies that the `URL` overload agrees with the `String` one.
     func testURLOverloadMatchesStringOverload() {
-        let url = URL(fileURLWithPath: "/Users/roger/Desktop")
-        XCTAssertEqual(url.toHFSPath(), "/Users/roger/Desktop".toHFSPath())
+        let url = URL(fileURLWithPath: NSHomeDirectory())
+        XCTAssertEqual(url.toHFSPath(), NSHomeDirectory().toHFSPath())
     }
 }
