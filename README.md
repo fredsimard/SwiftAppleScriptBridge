@@ -28,15 +28,14 @@ You can scatter your scripts across the classes that use them, of course, but my
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
 
-## Distribution: read this before you adopt the package
+## Distribution: read this if you intend to distribute/notarize/sign your app
 
 > [!IMPORTANT]
-> **TL;DR:** an app using this package can't be sandboxed, and so can't go on the Mac App Store. Controlling other apps is what this package is for, and that's fundamentally at odds with the sandbox — which the App Store requires.
+> **TL;DR:** an app using this package can't be sandboxed, therefore cannot go on the Mac App Store. Controlling other apps is what this package is for, and that's fundamentally at odds with the sandbox — which the App Store requires. Controlling other applications through [Apple Events](https://en.wikipedia.org/wiki/Apple_event) carries hard distribution consequences. They come from the platform, not from this package, and no amount of code can work around them.
 > 
-> Developer ID signing and notarization work normally. See [Distribution](distribution-read-this-before-you-adopt-the-package).
+> [**Developer ID signing**](https://developer.apple.com/developer-id/) and [**notarization**](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution) work like for any other macOS apps.
 
-Controlling other applications through Apple events carries hard distribution consequences. They come from the platform, not from this package, and no amount of code can work around them.
-
+### In details...
 1. **The Mac App Store is out.** Every App Store app must be sandboxed, and a sandboxed app cannot do what this package exists to do. Do not plan a Mac App Store release around it.
 1. **Sandboxing is not viable.** The App Sandbox blocks Apple events outright unless the app carries `com.apple.security.automation.apple-events`, and that entitlement authorizes automation per target application, which a general-purpose bridge cannot enumerate ahead of time. On top of that, two facilities here — `executeAppleScriptViaCommandLine(_:)` and `resetAutomationPermission(for:)` — spawn subprocesses, which the sandbox forbids outright. Plan on shipping unsandboxed.
 1. **Direct distribution is fully supported.** An unsandboxed app using this package can be signed with a Developer ID certificate, notarized by Apple, and stapled, exactly like any other app distributed outside the store. Users get no Gatekeeper warning. Distributing your own DMG, ZIP, or installer — or through Homebrew, Sparkle, or your own updater — works normally.
@@ -44,11 +43,15 @@ Controlling other applications through Apple events carries hard distribution co
 ## Installation
 
 > [!WARNING]
-> Requires macOS 13 or later. No dependencies.
+> Requires macOS 13 or later (tested on macOS 15 and 26 only). No dependencies.
 
-In Xcode: **File ▸ Add Package Dependencies…**, then paste the repository URL.
+A. In Xcode: **File ▸ Add Package Dependencies…**, then paste the repository URL:
 
-Or in a `Package.swift`:
+```
+https://github.com/fredsimard/SwiftAppleScriptBridge
+```
+
+B. Or in a `Package.swift`:
 
 ```swift
 dependencies: [
@@ -57,6 +60,11 @@ dependencies: [
 ```
 
 ## Usage
+
+> [!NOTE]
+> `tell application id` + the app identifier is used in the docs, but nothing prevents you from using the classic `tell application "App name"`.
+
+See the full API reference here: [Documentation/API.md](Documentation/API.md).
 
 ```swift
 import SwiftAppleScriptBridge
@@ -78,15 +86,14 @@ let count = try AppleScriptBridge.executeAppleScript(countOpenWindows) as? Int ?
 
 Placeholders are written `$key`. Variables may be supplied when the object is declared (`variables:`) or at call time (`with:`); runtime values win on conflict.
 
-Substitution is textual: `preparedScript(with:)` replaces each `$key` with rendered text, then AppleScript compiles the result. So the type a script receives is decided by **how you wrote the placeholder**, not by the Swift type alone. A placeholder inside quotes — `"$key"` — always yields AppleScript **text**. A bare placeholder — `$key` — yields whatever literal the value rendered to.
+Substitution is textual: `preparedScript(with:)` replaces each `$key` with rendered text, then AppleScript compiles the result. So the type a script receives is decided by **how you wrote the placeholder**, not by the Swift type alone. 
+
+A placeholder inside quotes — i.e. `"$key"` — always yields AppleScript **text**. A bare placeholder — `$key` — yields whatever literal the value rendered to, including the coercion (`$key as integer`, `$key as string`, etc.).
 
 > [!NOTE]
 > Keys are substituted longest-first, so `$page` never eats the front of `$pageNumber`.
 
 Strings are escaped on the way in (backslashes and double quotes), which is why they must be quoted: a bare `$name` holding `hello` would compile as an undefined identifier. Numbers and booleans render as bare literals, so a bare `$count` arrives as a real integer with nothing left to do. Quote one of those and it becomes text, and you have to coerce it at the top of the script: `set pageNumber to pageNumber as integer`. Wrapping a value in `AppleScriptRawValue` skips escaping entirely and inserts it as source, which is how you pass lists and records.
-
-> [!NOTE]
-> Pass POSIX paths as text and wrap them in the script (`POSIX file "$path"`), rather than converting to HFS form in Swift.
 
 | Swift value | Rendered as | Write it as | AppleScript receives | Coercion in AppleScript |
 |---|---|---|---|---|
@@ -99,8 +106,30 @@ Strings are escaped on the way in (backslashes and double quotes), which is why 
 | `Bool` | `true` / `false` | `$key` | `boolean` | — |
 | `Bool` | `true` / `false` | `"$key"` | `text` | `as boolean` |
 | `AppleScriptRawValue` | verbatim source | `$key` | whatever it evaluates to | — |
-| object references | ⚠️ Not available. See warning below | — | — | — |
+| HFS path (a `String`, from `toHFSPath()`) | escaped text | `"$path"` | `text` | `as alias`, or `as «class furl»` |
+| POSIX path (a `String`) | escaped text | `POSIX file "$path"` | `file` specifier | — or `as alias` if the app wants one |
+| object references | ⚠️ Not available. See warning below this table. | — | — | — |
 | anything else | escaped `String(describing:)` | `"$key"` | `text` | parse manually |
+
+> [!IMPORTANT]
+> Application-specific object references can't come back to Swift. Only the types in the table above survive the trip. For example:
+>
+> ```applescript
+> tell application id "com.adobe.InDesign" to set newPage to make new page
+> ```
+>
+> ... will not work as the `newPage` var is a live reference to an object inside InDesign, not data. There's no Swift equivalent, and asking for it as `.string` gets you whatever the app's coercion happens to produce — usually something unusable, sometimes an error. The same goes for aliases, file specifiers, dates, and anything else the app defines.
+>
+> Keep those references inside AppleScript. If you need to identify the object later, return something addressable instead — its id, name, or index — and use that to look it up on the next call:
+>
+> ```applescript
+> tell application id "com.adobe.InDesign"
+>     set newPage to make new page
+>     return id of newPage
+> end tell
+> ```
+
+#### Example
 
 ```swift
 let script = AppleScriptBridge.AppleScriptObject(
@@ -126,23 +155,19 @@ try AppleScriptBridge.executeAppleScript(script, with: [
 ])
 ```
 
-> [!IMPORTANT]
-> Application-specific object references can't come back to Swift. Only the types in the table above survive the trip.
->
-> ```applescript
-> tell application id "com.adobe.InDesign" to set newPage to make new page
-> ```
->
-> `newPage` is a live reference to an object inside InDesign, not data. There's no Swift equivalent, and asking for it as `.string` gets you whatever the app's coercion happens to produce — usually something unusable, sometimes an error. The same goes for aliases, file specifiers, dates, and anything else the app defines.
->
-> Keep those references inside AppleScript. If you need to identify the object later, return something addressable instead — its id, name, or index — and use that to look it up on the next call:
->
-> ```applescript
-> tell application id "com.adobe.InDesign"
->     set newPage to make new page
->     return id of newPage
-> end tell
-> ```
+### Return types
+
+| `returnType` | Swift result |
+|---|---|
+| `.int` | `Int` |
+| `.string` | `String` |
+| `.bool` | `Bool` (non-zero == `true`) |
+| `.list` | `[String]` |
+| `.record` | `[String: Any]` — flat records only |
+| `.json` | `[String: Any]` — for nested structures; build the JSON inside the script |
+| `.none` | `nil` |
+
+`.record` handles a flat `{name:"John", age:42}` and correctly leaves colons and commas that appear *inside* quoted values alone. For anything nested, build a JSON string in AppleScript and use `.json`.
 
 ### Escaping, and how to opt out
 
@@ -155,7 +180,7 @@ But sometimes the thing you're substituting really is AppleScript source. There'
 "filePath":   url.path(percentEncoded: false)                 // inserted as escaped data
 ```
 
-#### A worked example
+#### Example
 
 Say you want to hand AppleScript a list of file paths. You build the list in Swift:
 
@@ -180,42 +205,29 @@ try AppleScriptBridge.executeAppleScript(script, with: [
 ])
 ```
 
-Note the `.appleScriptStringEscaped` on each path, and the placeholder written bare as `$files` rather than `"$files"`. You skipped the bridge's escaping by using `AppleScriptRawValue`, so escaping each individual value is now your job.
-
-#### What happens if you forget
-
-Filenames can contain quotes. Take a file actually named `My "best" shot.jpg`. Without escaping, your generated list is:
-
-```applescript
-{"/Photos/My "best" shot.jpg"}
-```
-
-AppleScript reads that as the string `/Photos/My `, followed by a stray `best`, and the script fails to compile. That's the harmless outcome. A filename crafted on purpose can close the string and append its own commands, which then run with your app's automation permissions — that's the reason the escaping exists.
-
-With `.appleScriptStringEscaped` applied, the same file comes out as valid, inert text:
-
-```applescript
-{"/Photos/My \"best\" shot.jpg"}
-```
+> [!NOTE]
+> Note the `.appleScriptStringEscaped` on each path, and the placeholder written bare as `$files` rather than `"$files"`. You skipped the bridge's escaping by using `AppleScriptRawValue`, so escaping each individual value is now your job.
+> 
+> **What happens if you forget**
+> 
+> Filenames can contain quotes. Take a file actually named `My "best" shot.jpg`. Without escaping, your generated list is:
+> 
+> ```applescript
+> {"/Photos/My "best" shot.jpg"}
+> ```
+> 
+> AppleScript reads that as the string `/Photos/My `, followed by a stray `best`, and the script fails to compile. That's the harmless outcome. A filename crafted on purpose can close the string and append its own commands, which then run with your app's automation permissions — that's the reason the escaping exists.
+> 
+> With `.appleScriptStringEscaped` applied, the same file comes out as valid, inert text:
+> 
+> ```applescript
+> {"/Photos/My \"best\" shot.jpg"}
+> ```
 
 > [!WARNING]
 > Never wrap unvalidated input in `AppleScriptRawValue` — anything wrapped there is executed as code. Only use it for source you generated yourself, and escape every value you interpolate into that source with `String.appleScriptStringEscaped`.
 
-### Return types
-
-| `returnType` | Swift result |
-|---|---|
-| `.int` | `Int` |
-| `.string` | `String` |
-| `.bool` | `Bool` (non-zero is `true`) |
-| `.list` | `[String]` |
-| `.record` | `[String: Any]` — flat records only |
-| `.json` | `[String: Any]` — for nested structures; build the JSON inside the script |
-| `.none` | `nil` |
-
-`.record` handles a flat `{name:"John", age:42}` and correctly leaves colons and commas that appear *inside* quoted values alone. For anything nested, build a JSON string in AppleScript and use `.json`.
-
-### Choosing an execution method
+## Choosing an execution method
 
 Both methods take the same `AppleScriptObject` and the same optional runtime variables, and both interpret the result according to the script's `returnType`. They differ in how the script actually runs.
 
@@ -249,11 +261,11 @@ AppleScriptBridge.requestAutomationPermission(for: "com.apple.finder")  // trigg
 AppleScriptBridge.resetAutomationPermission()                          // tccutil reset, for testing
 ```
 
-### Threading
+## Threading
 
 `NSAppleScript` is not thread-safe. `executeAppleScript(_:)` marshals calls arriving off the main thread onto the main queue and waits, so a background loop driving another application stays correct. The main thread is blocked for the duration of each individual script but is free between them, so progress UI keeps updating.
 
-### Logging
+## Logging
 
 The package logs prepared script sources through a closure you control. It prints in `DEBUG` builds by default:
 
