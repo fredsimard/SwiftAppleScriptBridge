@@ -158,6 +158,8 @@ extension AppleScriptBridge {
         /// - Parameter value: The variable value to render.
         /// - Returns: The text to insert in place of the placeholder.
         private static func substitution(for value: Any) -> String {
+            let value = unwrappedNumber(value)
+
             switch value {
                 case let raw    as AppleScriptRawValue : return raw.source
                 case let string as String              : return string.appleScriptStringEscaped
@@ -166,6 +168,22 @@ extension AppleScriptBridge {
                 case let double as Double              : return String(double)
                 default                                : return String(describing: value).appleScriptStringEscaped
             }
+        }
+
+        /// Unwraps an `NSNumber` into the Swift type it actually carries, leaving any other value untouched.
+        ///
+        /// An `NSNumber` bridges to `Bool` whatever it holds: `NSNumber(value: 1) as? Bool` is `true`. A count
+        /// coming from `JSONSerialization` or from Objective-C would therefore match the boolean case in
+        /// `substitution(for:)` and render as `true` instead of `1`. Only the CoreFoundation type tells a
+        /// boolean from a number, so the check happens here, once, before any type matching.
+        ///
+        /// - Parameter value: The variable value to unwrap.
+        /// - Returns: `Bool` for a CoreFoundation boolean, `Double` for a floating-point number, `Int` for any
+        /// other number, or the value unchanged if it is not a number.
+        private static func unwrappedNumber(_ value: Any) -> Any {
+            guard let number = value as? NSNumber else { return value }
+            if CFGetTypeID(number) == CFBooleanGetTypeID() { return number.boolValue }
+            return CFNumberIsFloatType(number as CFNumber) ? number.doubleValue : Int(number.int64Value)
         }
 
         /// Returns a human-readable, multi-line description of the script.
