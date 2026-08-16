@@ -4,7 +4,8 @@
 //
 //  Tests cover the pure, deterministic parts of the bridge: escaping, placeholder substitution and result
 //  parsing. Script execution itself is not tested, since it needs a scriptable application and a
-//  user-granted Automation permission.
+//  user-granted Automation permission. The one exception is `CommandLineExecutionTests`, which runs
+//  self-contained scripts through `osascript`: they drive no application, so they need no permission.
 //
 
 import XCTest
@@ -85,6 +86,39 @@ final class PreparedScriptTests: XCTestCase {
         XCTAssertEqual(script.preparedScript(with: ["n": 2]), "2")
     }
 
+    /// Verifies that a substituted value is not itself scanned for placeholders.
+    func testSubstitutedValueIsNotRescanned() {
+        let script = AppleScriptBridge.AppleScriptObject(
+            name: "test",
+            variables: ["folderPath": "$name.txt", "name": "Roger"],
+            script: #"set p to "$folderPath""#
+        )
+        XCTAssertEqual(script.preparedScript(), #"set p to "$name.txt""#)
+    }
+
+    /// Verifies that a number arriving as `NSNumber` is rendered as its value, not as a boolean.
+    func testNSNumberIsNotRenderedAsBoolean() {
+        let script = AppleScriptBridge.AppleScriptObject(
+            name: "test",
+            variables: ["count": NSNumber(value: 1), "flag": NSNumber(value: true)],
+            script: "$count $flag"
+        )
+        XCTAssertEqual(script.preparedScript(), "1 true")
+    }
+
+    /// Verifies the same for numbers coming out of `JSONSerialization`, the common source of `NSNumber`.
+    func testJSONNumbersKeepTheirType() throws {
+        let json = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(#"{"count":1,"flag":true,"ratio":1.5}"#.utf8)) as? [String: Any]
+        )
+        let script = AppleScriptBridge.AppleScriptObject(
+            name: "test",
+            variables: json,
+            script: "$count $flag $ratio"
+        )
+        XCTAssertEqual(script.preparedScript(), "1 true 1.5")
+    }
+
     /// Verifies that an unforeseen value type is described and escaped, rather than injected as code.
     func testUnknownTypeFailsSafe() {
         let script = AppleScriptBridge.AppleScriptObject(
@@ -151,6 +185,20 @@ final class JSONParsingTests: XCTestCase {
     func testInvalidJSONYieldsNil() {
         XCTAssertNil("{not json".parseJSONStringFromAppleScript())
         XCTAssertNil("[1,2,3]".parseJSONStringFromAppleScript())
+    }
+}
+
+// MARK: - COMMAND-LINE EXECUTION
+
+final class CommandLineExecutionTests: XCTestCase {
+
+    /// Verifies that a boolean result is read from the text osascript prints, rather than coerced from an
+    /// integer it never writes.
+    func testCommandLineBooleanResults() throws {
+        let yes = AppleScriptBridge.AppleScriptObject(name: "yes", returnType: .bool, script: "return true")
+        let no  = AppleScriptBridge.AppleScriptObject(name: "no",  returnType: .bool, script: "return false")
+        XCTAssertEqual(try AppleScriptBridge.executeAppleScriptViaCommandLine(yes) as? Bool, true)
+        XCTAssertEqual(try AppleScriptBridge.executeAppleScriptViaCommandLine(no) as? Bool, false)
     }
 }
 
