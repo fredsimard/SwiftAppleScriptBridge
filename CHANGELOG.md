@@ -8,6 +8,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 Nothing yet.
 
+## [1.0.1] — 2026-08-16
+
+No functional change: the public API, and what every method does, are identical to 1.0.0.
+
+### Added
+
+- `Examples/AppleScripts.swift`, showing the one-file-of-scripts layout with a script for every return type, the three placeholder forms, a raw AppleScript list, and the Swift call site for each. CI builds it as a consumer package so it cannot rot.
+- README section on Swift 6 language mode. `AppleScriptObject` is not `Sendable`, so declaring scripts as `static let` needs `nonisolated(unsafe)` there. Removing that requirement is tracked in [#2](https://github.com/fredsimard/SwiftAppleScriptBridge/issues/2).
+- `Documentation/API.md`, a reference for every public symbol.
+- `CONTRIBUTING.md`, `SECURITY.md`, and issue and pull request templates.
+
+### Changed
+
+- Dropped four redundant `?? nil` coalescings in `executeAppleScript(_:with:)`, where the expression was already optional and the return type is `Any?`. Same results, same types.
+- SwiftLint now fails the build on any violation, with the rules that conflict with the codebase's deliberate style disabled and annotated.
+
 ## [1.0.0] — 2026-08-16
 
 First public release.
@@ -30,5 +46,6 @@ First public release.
 - Ships in Swift 5 language mode. `AppleScriptObject` carries `[String: Any]`, which is not `Sendable`; a strict-concurrency redesign is planned for 2.0.
 - An app using this package cannot be sandboxed and so cannot ship on the Mac App Store. Developer ID signing and notarization are unaffected.
 
-[Unreleased]: https://github.com/fredsimard/SwiftAppleScriptBridge/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/fredsimard/SwiftAppleScriptBridge/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/fredsimard/SwiftAppleScriptBridge/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/fredsimard/SwiftAppleScriptBridge/releases/tag/v1.0.0
