@@ -117,21 +117,32 @@ extension AppleScriptBridge {
         /// - Parameter runtimeVariables: Variables resolved at call time, overriding predefined ones of the same name.
         /// - Returns: The AppleScript source, ready to compile.
         public func preparedScript(with runtimeVariables: [String: Any]? = nil) -> String {
-            var preparedScript = script
 
             // Combine predefined variables with runtime variables
             let combinedVariables = (variables ?? [:]).merging(runtimeVariables ?? [:]) { _, runtimeValue in
                 runtimeValue // Runtime variable overrides predefined one
             }
 
-            // Replace variables in the script, longest key first: `$page` would otherwise also match the
-            // start of `$pageNumber` and leave a stray "Number" behind, depending on dictionary order.
-            for key in combinedVariables.keys.sorted(by: { $0.count > $1.count }) {
-                guard let value = combinedVariables[key] else { continue }
-                preparedScript = preparedScript.replacingOccurrences(
-                    of: "$\(key)",
-                    with: Self.substitution(for: value)
-                )
+            // Longest key first: `$page` would otherwise also match the start of `$pageNumber` and leave
+            // a stray "Number" behind, depending on dictionary order.
+            let keys = combinedVariables.keys.sorted(by: { $0.count > $1.count })
+
+            // Single pass over the original script, so a substituted value is never itself scanned for
+            // placeholders: a filename like `$folderPath.txt` stays intact.
+            var preparedScript = ""
+            var index = script.startIndex
+
+            while index < script.endIndex {
+                let afterDollar = script.index(after: index)
+                guard script[index] == "$",
+                      let key = keys.first(where: { script[afterDollar...].hasPrefix($0) }),
+                      let value = combinedVariables[key] else {
+                    preparedScript.append(script[index])
+                    index = afterDollar
+                    continue
+                }
+                preparedScript += Self.substitution(for: value)
+                index = script.index(afterDollar, offsetBy: key.count)
             }
 
             return preparedScript
