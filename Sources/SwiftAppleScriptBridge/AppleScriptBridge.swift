@@ -168,8 +168,8 @@ public class AppleScriptBridge: NSObject {
     /// - Parameter bundleIdentifier: The bundle identifier of the application whose authorization is reset.
     /// Defaults to the host application's own identifier. If it cannot be read, the reset is skipped rather
     /// than run without a target, so that other applications' authorizations are never affected.
-    /// - Returns: `true` if `tccutil` ran to completion, `false` if the identifier was missing or the process
-    /// failed to launch.
+    /// - Returns: `true` if `tccutil` reset the authorization, `false` if the identifier was missing, the
+    /// process failed to launch, or `tccutil` exited with a non-zero status.
     ///
     /// - Note: Spawning `/usr/bin/tccutil` is blocked by the App Sandbox, so this is only usable from a
     /// non-sandboxed application.
@@ -186,10 +186,16 @@ public class AppleScriptBridge: NSObject {
         do {
             try process.run()
             process.waitUntilExit()
+
+            guard process.terminationStatus == 0 else {
+                log("Failed to reset automation permissions: tccutil exited with status \(process.terminationStatus).")
+                return false
+            }
+
             log("Automation permissions reset successfully.")
             return true
         } catch {
-            log("Failed to reset automation permissions: " + error.localizedDescription)
+            log("Failed to reset automation permissions: " + String(describing: error))
             return false
         }
     }
@@ -232,7 +238,7 @@ public class AppleScriptBridge: NSObject {
             log(error.description)
             return false
         } catch {
-            log("Unexpected error:\n" + error.localizedDescription)
+            log("Unexpected error:\n" + String(describing: error))
             return false
         }
     }
