@@ -82,7 +82,7 @@ public static func executeAppleScriptViaCommandLine(
 ) throws -> Any?
 ```
 
-Runs the same script through `/usr/bin/osascript` in a subprocess instead. Useful if you hit an `NSAppleScript` quirk, or want a long script isolated from your process. Parameters and return values match `executeAppleScript(_:with:)`, with two differences: `.list` splits on `\r` rather than on newlines, and only a launch failure throws.
+Runs the same script through `/usr/bin/osascript` in a subprocess instead. Useful if you hit an `NSAppleScript` quirk, or want a long script isolated from your process. Parameters and return values match `executeAppleScript(_:with:)`, with two differences: `.list` splits on `\r` rather than on newlines, and a failing script does not throw — only a launch failure or undecodable output does.
 
 **Throws**
 
@@ -93,6 +93,9 @@ Runs the same script through `/usr/bin/osascript` in a subprocess instead. Usefu
 
 > [!WARNING]
 > Script errors are **not** detected. `stderr` is piped into the same pipe as `stdout` and the exit status is ignored, so a failing script returns osascript's error text as if it were a result — a `.string` call yields the error message, an `.int` call yields `nil`. Validate what comes back if you use this method.
+
+> [!WARNING]
+> The fully substituted script is passed to `osascript` as a command-line argument, so any local process can read it with `ps`. If your variables carry sensitive strings, prefer `executeAppleScript(_:with:)`.
 
 ### `requestAutomationPermission(for:activating:)`
 
@@ -148,7 +151,7 @@ How a script's result should be interpreted.
 |---|---|
 | `.int` | `Int` |
 | `.string` | `String` |
-| `.bool` | `Bool` — non-zero is `true` |
+| `.bool` | `Bool` — the script's `true`/`false`, or any non-zero number |
 | `.list` | `[String]` |
 | `.record` | `[String: Any]` — flat records only |
 | `.json` | `[String: Any]` — for nested structures; build the JSON inside the script |
@@ -289,7 +292,7 @@ Parses a flat AppleScript record such as `{name:"John Doe", age:42, active:true}
 
 The record is scanned character by character rather than rewritten into JSON, so colons and commas *inside* quoted values — common in file paths and times — are correctly treated as content.
 
-**Limitations:** keys must be alphanumeric, string values must be double-quoted, and nested records or lists are not supported. Use `.json` for anything nested.
+**Limitations:** a key is everything up to the first colon and cannot be empty, string values must be double-quoted, and nested records or lists are not supported. Use `.json` for anything nested.
 
 ### `String.parseJSONStringFromAppleScript()`
 
@@ -313,7 +316,7 @@ Converts an HFS-style path (`Macintosh HD:Users:roger:Desktop`) to POSIX (`/User
 public func toHFSPath() -> String?
 ```
 
-The reverse: POSIX to HFS-style. Returns `nil` if the startup disk name can't be read. The `URL` version delegates to the `String` one, so the two can't drift apart.
+The reverse: POSIX to HFS-style. The result starts with the name of the volume holding the file, so paths on external drives, disk images and network shares convert correctly. The path must exist — the volume is read from the file system — and `nil` comes back otherwise. The `URL` version delegates to the `String` one, so the two can't drift apart.
 
 > [!NOTE]
 > Most scriptable applications now expect POSIX paths, which are better passed as text and wrapped in the script with `POSIX file "$path"`. These conversions are here for the applications and script dialects that still want HFS paths.

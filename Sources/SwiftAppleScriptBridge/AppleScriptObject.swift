@@ -71,7 +71,7 @@ extension AppleScriptBridge {
     /// - Properties:
     ///   - `name`: Mandatory. A unique name identifying the script. Useful for logging or display.
     ///   - `returnType`: The expected return type from the AppleScript execution. Defaults to `.none` if no value is provided.
-    ///   - `variables`: A optional dictionary of predefined variables used to replace placeholders in the script. `String` values are escaped on substitution; wrap AppleScript source in `AppleScriptRawValue` to insert it verbatim.
+    ///   - `variables`: An optional dictionary of predefined variables used to replace placeholders in the script. `String` values are escaped on substitution; wrap AppleScript source in `AppleScriptRawValue` to insert it verbatim.
     ///   - `script`: Mandatory. The raw AppleScript source, with optional `$key` placeholders for dynamic substitution with elements in `variables` when using the `preparedScript` function. A placeholder holding text must be written inside a quoted literal (`"$key"`); one holding a number or a boolean must be written bare (`$key`).
     ///
     /// - Initializer:
@@ -117,21 +117,32 @@ extension AppleScriptBridge {
         /// - Parameter runtimeVariables: Variables resolved at call time, overriding predefined ones of the same name.
         /// - Returns: The AppleScript source, ready to compile.
         public func preparedScript(with runtimeVariables: [String: Any]? = nil) -> String {
-            var preparedScript = script
 
             // Combine predefined variables with runtime variables
             let combinedVariables = (variables ?? [:]).merging(runtimeVariables ?? [:]) { _, runtimeValue in
                 runtimeValue // Runtime variable overrides predefined one
             }
 
-            // Replace variables in the script, longest key first: `$page` would otherwise also match the
-            // start of `$pageNumber` and leave a stray "Number" behind, depending on dictionary order.
-            for key in combinedVariables.keys.sorted(by: { $0.count > $1.count }) {
-                guard let value = combinedVariables[key] else { continue }
-                preparedScript = preparedScript.replacingOccurrences(
-                    of: "$\(key)",
-                    with: Self.substitution(for: value)
-                )
+            // Longest key first: `$page` would otherwise also match the start of `$pageNumber` and leave
+            // a stray "Number" behind, depending on dictionary order.
+            let keys = combinedVariables.keys.sorted(by: { $0.count > $1.count })
+
+            // Single pass over the original script, so a substituted value is never itself scanned for
+            // placeholders: a filename like `$folderPath.txt` stays intact.
+            var preparedScript = ""
+            var index = script.startIndex
+
+            while index < script.endIndex {
+                let afterDollar = script.index(after: index)
+                guard script[index] == "$",
+                      let key = keys.first(where: { script[afterDollar...].hasPrefix($0) }),
+                      let value = combinedVariables[key] else {
+                    preparedScript.append(script[index])
+                    index = afterDollar
+                    continue
+                }
+                preparedScript += Self.substitution(for: value)
+                index = script.index(afterDollar, offsetBy: key.count)
             }
 
             return preparedScript
@@ -147,6 +158,8 @@ extension AppleScriptBridge {
         /// - Parameter value: The variable value to render.
         /// - Returns: The text to insert in place of the placeholder.
         private static func substitution(for value: Any) -> String {
+            let value = unwrappedNumber(value)
+
             switch value {
                 case let raw    as AppleScriptRawValue : return raw.source
                 case let string as String              : return string.appleScriptStringEscaped
@@ -155,6 +168,22 @@ extension AppleScriptBridge {
                 case let double as Double              : return String(double)
                 default                                : return String(describing: value).appleScriptStringEscaped
             }
+        }
+
+        /// Unwraps an `NSNumber` into the Swift type it actually carries, leaving any other value untouched.
+        ///
+        /// An `NSNumber` bridges to `Bool` whatever it holds: `NSNumber(value: 1) as? Bool` is `true`. A count
+        /// coming from `JSONSerialization` or from Objective-C would therefore match the boolean case in
+        /// `substitution(for:)` and render as `true` instead of `1`. Only the CoreFoundation type tells a
+        /// boolean from a number, so the check happens here, once, before any type matching.
+        ///
+        /// - Parameter value: The variable value to unwrap.
+        /// - Returns: `Bool` for a CoreFoundation boolean, `Double` for a floating-point number, `Int` for any
+        /// other number, or the value unchanged if it is not a number.
+        private static func unwrappedNumber(_ value: Any) -> Any {
+            guard let number = value as? NSNumber else { return value }
+            if CFGetTypeID(number) == CFBooleanGetTypeID() { return number.boolValue }
+            return CFNumberIsFloatType(number as CFNumber) ? number.doubleValue : Int(number.int64Value)
         }
 
         /// Returns a human-readable, multi-line description of the script.

@@ -178,7 +178,7 @@ try AppleScriptBridge.executeAppleScript(script, with: [
 |---|---|
 | `.int` | `Int` |
 | `.string` | `String` |
-| `.bool` | `Bool` (non-zero == `true`) |
+| `.bool` | `Bool` (the script's `true`/`false`, or any non-zero number) |
 | `.list` | `[String]` |
 | `.record` | `[String: Any]` — flat records only |
 | `.json` | `[String: Any]` — for nested structures; build the JSON inside the script |

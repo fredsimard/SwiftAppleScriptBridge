@@ -59,11 +59,11 @@ public class AppleScriptBridge: NSObject {
     ///   - AppleScript: The `AppleScriptObject` to execute.
     ///   - runtimeVariables: Variables resolved at call time, overriding the object's predefined ones of the
     ///   same name. Defaults to `nil`.
-    /// - Returns: The result of the script, cast to the expected type (`Int`, `String`, `Bool`, `[String]`, or `nil`).
+    /// - Returns: The result of the script, cast to the expected type (`Int`, `String`, `Bool`, `[String]`,
+    /// `[String: Any]`, or `nil`).
     /// - Throws:
     ///   - `AppleScriptError.failedToInitScript` if the script cannot be initialized.
     ///   - `AppleScriptError.executionError` if execution fails and returns an error.
-    ///   - `AppleScriptError.failedToReadOutput` if the result can't be parsed.
     ///
     /// - Note: For `.list` and `.record`, raw strings are returned and may need further parsing.
     ///
@@ -111,7 +111,8 @@ public class AppleScriptBridge: NSObject {
     ///   - AppleScript: The `AppleScriptObject` to execute.
     ///   - runtimeVariables: Variables resolved at call time, overriding the object's predefined ones of the
     ///   same name. Defaults to `nil`.
-    /// - Returns: The result of the script, cast to the expected type (`Int`, `String`, `Bool`, `[String]`, or `nil`).
+    /// - Returns: The result of the script, cast to the expected type (`Int`, `String`, `Bool`, `[String]`,
+    /// `[String: Any]`, or `nil`).
     /// - Throws:
     ///   - `AppleScriptError.executionError` if the process fails to launch or run.
     ///   - `AppleScriptError.failedToReadOutput` if the output cannot be interpreted.
@@ -120,6 +121,9 @@ public class AppleScriptBridge: NSObject {
     ///
     /// - Note: Spawning `/usr/bin/osascript` is blocked by the App Sandbox. Use this only from a
     /// non-sandboxed application.
+    ///
+    /// - Note: The fully substituted script is passed to `osascript` as a command-line argument, where any
+    /// local process can read it with `ps`. Prefer `executeAppleScript(_:with:)` if variables carry secrets.
     public static func executeAppleScriptViaCommandLine(_ AppleScript: AppleScriptObject, with runtimeVariables: [String: Any]? = nil) throws -> Any? {
         let process = Process()
         let pipe = Pipe()
@@ -131,14 +135,17 @@ public class AppleScriptBridge: NSObject {
         process.standardOutput = pipe
         process.standardError = pipe
 
+        let data: Data
         do {
             try process.run()
+            // Read before waiting: osascript blocks writing once the pipe buffer fills,
+            // and waitUntilExit() would then never return.
+            data = pipe.fileHandleForReading.readDataToEndOfFile()
             process.waitUntilExit()
         } catch {
             throw AppleScriptError.executionError(String(describing: error))
         }
 
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
         guard let result = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) else {
             throw AppleScriptError.failedToReadOutput
         }
@@ -146,7 +153,7 @@ public class AppleScriptBridge: NSObject {
         switch AppleScript.returnType {
             case .int:    return Int(result)
             case .string: return result
-            case .bool:   return (Int(result) ?? 0) != 0
+            case .bool:   return result.caseInsensitiveCompare("true") == .orderedSame || (Int(result) ?? 0) != 0
             case .list:   return result.components(separatedBy: "\r")
             case .record: return result.parseSimpleAppleScriptRecord()
             case .json:   return result.parseJSONStringFromAppleScript()
@@ -165,8 +172,8 @@ public class AppleScriptBridge: NSObject {
     /// - Parameter bundleIdentifier: The bundle identifier of the application whose authorization is reset.
     /// Defaults to the host application's own identifier. If it cannot be read, the reset is skipped rather
     /// than run without a target, so that other applications' authorizations are never affected.
-    /// - Returns: `true` if `tccutil` ran to completion, `false` if the identifier was missing or the process
-    /// failed to launch.
+    /// - Returns: `true` if `tccutil` reset the authorization, `false` if the identifier was missing, the
+    /// process failed to launch, or `tccutil` exited with a non-zero status.
     ///
     /// - Note: Spawning `/usr/bin/tccutil` is blocked by the App Sandbox, so this is only usable from a
     /// non-sandboxed application.
@@ -183,10 +190,16 @@ public class AppleScriptBridge: NSObject {
         do {
             try process.run()
             process.waitUntilExit()
+
+            guard process.terminationStatus == 0 else {
+                log("Failed to reset automation permissions: tccutil exited with status \(process.terminationStatus).")
+                return false
+            }
+
             log("Automation permissions reset successfully.")
             return true
         } catch {
-            log("Failed to reset automation permissions: " + error.localizedDescription)
+            log("Failed to reset automation permissions: " + String(describing: error))
             return false
         }
     }
@@ -229,7 +242,7 @@ public class AppleScriptBridge: NSObject {
             log(error.description)
             return false
         } catch {
-            log("Unexpected error:\n" + error.localizedDescription)
+            log("Unexpected error:\n" + String(describing: error))
             return false
         }
     }
