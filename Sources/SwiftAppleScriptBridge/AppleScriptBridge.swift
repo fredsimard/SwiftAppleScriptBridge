@@ -131,14 +131,17 @@ public class AppleScriptBridge: NSObject {
         process.standardOutput = pipe
         process.standardError = pipe
 
+        let data: Data
         do {
             try process.run()
+            // Read before waiting: osascript blocks writing once the pipe buffer fills,
+            // and waitUntilExit() would then never return.
+            data = pipe.fileHandleForReading.readDataToEndOfFile()
             process.waitUntilExit()
         } catch {
             throw AppleScriptError.executionError(String(describing: error))
         }
 
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
         guard let result = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) else {
             throw AppleScriptError.failedToReadOutput
         }
