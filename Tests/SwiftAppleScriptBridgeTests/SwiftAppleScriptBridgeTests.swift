@@ -196,7 +196,7 @@ final class CommandLineExecutionTests: XCTestCase {
     /// integer it never writes.
     func testCommandLineBooleanResults() throws {
         let yes = AppleScriptBridge.AppleScriptObject(name: "yes", returnType: .bool, script: "return true")
-        let no  = AppleScriptBridge.AppleScriptObject(name: "no",  returnType: .bool, script: "return false")
+        let no  = AppleScriptBridge.AppleScriptObject(name: "no", returnType: .bool, script: "return false")
         XCTAssertEqual(try AppleScriptBridge.executeAppleScriptViaCommandLine(yes) as? Bool, true)
         XCTAssertEqual(try AppleScriptBridge.executeAppleScriptViaCommandLine(no) as? Bool, false)
     }
