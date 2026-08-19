@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [1.1.0] — 2026-08-19
+
 ### Added
 
 - Swift collections are now rendered as their AppleScript equivalents on substitution: an `Array` becomes a list, a `Dictionary` becomes a record, and the two nest, so an array of dictionaries arrives as a list of records. Elements are escaped by the same rules as any other value, so building AppleScript source by hand and wrapping it in `AppleScriptRawValue` is no longer the only way to pass a list. Both render as bare literals, written `$key` rather than `"$key"`. Closes [#1](https://github.com/fredsimard/SwiftAppleScriptBridge/issues/1).
@@ -66,6 +70,7 @@ First public release.
 - Ships in Swift 5 language mode. `AppleScriptObject` carries `[String: Any]`, which is not `Sendable`; a strict-concurrency redesign is planned for 2.0.
 - An app using this package cannot be sandboxed and so cannot ship on the Mac App Store. Developer ID signing and notarization are unaffected.
 
-[Unreleased]: https://github.com/fredsimard/SwiftAppleScriptBridge/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/fredsimard/SwiftAppleScriptBridge/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/fredsimard/SwiftAppleScriptBridge/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/fredsimard/SwiftAppleScriptBridge/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/fredsimard/SwiftAppleScriptBridge/releases/tag/v1.0.0
