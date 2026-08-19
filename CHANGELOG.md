@@ -6,7 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- Swift collections are now rendered as their AppleScript equivalents on substitution: an `Array` becomes a list, a `Dictionary` becomes a record, and the two nest, so an array of dictionaries arrives as a list of records. Elements are escaped by the same rules as any other value, so building AppleScript source by hand and wrapping it in `AppleScriptRawValue` is no longer the only way to pass a list. Both render as bare literals, written `$key` rather than `"$key"`. Closes [#1](https://github.com/fredsimard/SwiftAppleScriptBridge/issues/1).
+  - Record keys that are not plain AppleScript identifiers — keys holding spaces or punctuation, and AppleScript's reserved words — are vertical-bar quoted (`{|first name|:"Roger"}`), which is the only way such a key can be written. Keys that *are* plain identifiers are left bare, so a term the target application defines keeps its meaning.
+  - Dictionary keys are sorted when rendered, so the same dictionary always produces the same script source. A key that is not a `String` is described first, which is what a dictionary bridged from Objective-C or from `JSONSerialization` needs.
+  - An empty dictionary renders as `{}`, which is also how AppleScript writes an empty list. The script decides which it is.
+
+### Changed
+
+- An `Array` or `Dictionary` passed as a variable used to fall through to `String(describing:)` and arrive as text such as `["a", "b"]`. It now arrives as a real AppleScript list or record. Any script relying on the old text form has to be updated, though that output was almost certainly a bug rather than something to depend on.
 
 ## [1.0.1] — 2026-08-16
 
