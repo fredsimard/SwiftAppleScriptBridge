@@ -55,14 +55,14 @@ B. Or in a `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/fredsimard/SwiftAppleScriptBridge", from: "1.0.0")
+    .package(url: "https://github.com/fredsimard/SwiftAppleScriptBridge", from: "1.1.0")
 ]
 ```
 
 ## Usage
 
 > [!NOTE]
-> `tell application id` + the app identifier is used in the docs, but nothing prevents you from using the classic `tell application "App name"`.
+> Although the form `tell application id` + `bundle identifier` is used in this repo nothing prevents you from using the classic `tell application "App name"`. I personally prefer the former as it is more flexible with newer versions of applications like InDesign which change their app's name in AppleScript every time they release a major version.
 
 ### Full API documentation
 See the full API reference here: [Documentation/API.md](Documentation/API.md).
