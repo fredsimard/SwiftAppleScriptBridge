@@ -15,7 +15,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
-- An `Array` or `Dictionary` passed as a variable used to fall through to `String(describing:)` and arrive as text such as `["a", "b"]`. It now arrives as a real AppleScript list or record. Any script relying on the old text form has to be updated, though that output was almost certainly a bug rather than something to depend on.
+- An `Array` or `Dictionary` passed as a variable used to fall through to `String(describing:)` and arrive as text such as `["a", "b"]`. It now arrives as a real AppleScript list or record. The public API is unchanged and nothing stops compiling on the Swift side, but a script written against the old text form has to be updated — that output was almost certainly a bug rather than something to depend on.
+- A collection substituted into a *quoted* placeholder (`"$key"`) now produces a syntax error rather than text, since the rendered literal carries its own quotation marks: `"{"a", "b"}"`. Write these placeholders bare, as `$key`. The failure is loud and happens at compile time, before the script runs.
 
 ## [1.0.1] — 2026-08-16
 
