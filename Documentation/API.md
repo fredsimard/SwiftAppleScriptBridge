@@ -166,7 +166,7 @@ public struct AppleScriptRawValue: Sendable {
 }
 ```
 
-Wraps a value that is already valid AppleScript source, so it is substituted verbatim instead of being escaped. Use it for lists and records you generated yourself.
+Wraps a value that is already valid AppleScript source, so it is substituted verbatim instead of being escaped. Arrays and dictionaries are converted for you, so this is for the fragments no type mapping covers: an expression, a call, terminology you assembled yourself.
 
 > [!WARNING]
 > Never wrap unvalidated input in this type — anything wrapped here is inserted unchanged and executed as code. Escape every value you interpolate into that source with `appleScriptStringEscaped`.
@@ -220,7 +220,11 @@ Values are rendered like this:
 | `String` | escaped text, for use inside `"..."` |
 | `Bool` | `true` / `false` |
 | `Int`, `Double` | the bare number |
+| `Array` | an AppleScript list, `{"a", "b"}`, each element rendered by these same rules |
+| `Dictionary` | an AppleScript record, `{name:"Roger", age:42}`, keys sorted and quoted only where AppleScript needs it |
 | anything else | escaped `String(describing:)`, so an unforeseen type fails safe |
+
+Collections nest, so an array of dictionaries renders as a list of records. Both render as bare literals: write the placeholder as `$key`, not `"$key"`. A record key that is not a plain identifier, or that is one of AppleScript's reserved words, is vertical-bar quoted — `{|first name|:"Roger"}` — and has to be read back out of the record the same way. An empty dictionary renders as `{}`, which is also how AppleScript writes an empty list.
 
 > [!NOTE]
 > Keys are substituted longest-first, so `$page` never eats the front of `$pageNumber`.

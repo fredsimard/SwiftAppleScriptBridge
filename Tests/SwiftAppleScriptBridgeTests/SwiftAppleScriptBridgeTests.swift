@@ -130,6 +130,86 @@ final class PreparedScriptTests: XCTestCase {
     }
 }
 
+// MARK: - COLLECTION SUBSTITUTION
+
+final class CollectionSubstitutionTests: XCTestCase {
+
+    /// Verifies that an array becomes an AppleScript list, with each element escaped.
+    func testArrayBecomesList() {
+        let script = AppleScriptBridge.AppleScriptObject(
+            name: "test",
+            variables: ["files": ["a", #"b"c"#], "counts": [1, 2]],
+            script: "$files $counts"
+        )
+        XCTAssertEqual(script.preparedScript(), #"{"a", "b\"c"} {1, 2}"#)
+    }
+
+    /// Verifies that a dictionary becomes an AppleScript record, with keys sorted for a stable source.
+    func testDictionaryBecomesRecord() {
+        let script = AppleScriptBridge.AppleScriptObject(
+            name: "test",
+            variables: ["person": ["name": "Roger", "age": 42, "active": true]],
+            script: "$person"
+        )
+        XCTAssertEqual(script.preparedScript(), #"{active:true, age:42, name:"Roger"}"#)
+    }
+
+    /// Verifies that collections nest: an array of dictionaries becomes a list of records.
+    func testNestedCollections() {
+        let script = AppleScriptBridge.AppleScriptObject(
+            name: "test",
+            variables: ["items": [["id": "a", "tags": ["x", "y"]], ["id": "b", "tags": [] as [Any]]]],
+            script: "$items"
+        )
+        XCTAssertEqual(script.preparedScript(), #"{{id:"a", tags:{"x", "y"}}, {id:"b", tags:{}}}"#)
+    }
+
+    /// Verifies that both an empty array and an empty dictionary render as `{}`, which is how AppleScript
+    /// writes an empty list and an empty record alike.
+    func testEmptyCollections() {
+        let script = AppleScriptBridge.AppleScriptObject(
+            name: "test",
+            variables: ["list": [] as [Any], "record": [:] as [String: Any]],
+            script: "$list $record"
+        )
+        XCTAssertEqual(script.preparedScript(), "{} {}")
+    }
+
+    /// Verifies that a key which does not read as a plain identifier is vertical-bar quoted, and that a key
+    /// which does is left bare so the target application's own terminology still applies.
+    func testRecordKeysAreQuotedOnlyWhenNeeded() {
+        let script = AppleScriptBridge.AppleScriptObject(
+            name: "test",
+            variables: ["r": ["name": 1, "first name": 2, "set": 3, "2nd": 4, "_ok": 5]],
+            script: "$r"
+        )
+        XCTAssertEqual(script.preparedScript(), "{|2nd|:4, _ok:5, |first name|:2, name:1, |set|:3}")
+    }
+
+    /// Verifies that a backslash and a vertical bar inside a quoted key are escaped, so the key cannot
+    /// terminate its own quoting.
+    func testRecordKeyQuotingIsEscaped() {
+        let script = AppleScriptBridge.AppleScriptObject(
+            name: "test",
+            variables: ["r": [#"a|b\c"#: 1]],
+            script: "$r"
+        )
+        XCTAssertEqual(script.preparedScript(), #"{|a\|b\\c|:1}"#)
+    }
+
+    /// Verifies that a dictionary bridged from Objective-C or from JSON is rendered as a record, with its
+    /// numbers kept as numbers rather than read as booleans.
+    func testBridgedDictionaryIsRendered() {
+        let json = try? JSONSerialization.jsonObject(with: Data(#"{"count":1,"ok":true}"#.utf8))
+        let script = AppleScriptBridge.AppleScriptObject(
+            name: "test",
+            variables: ["r": json as Any],
+            script: "$r"
+        )
+        XCTAssertEqual(script.preparedScript(), "{count:1, ok:true}")
+    }
+}
+
 // MARK: - RECORD PARSING
 
 final class RecordParsingTests: XCTestCase {
@@ -199,6 +279,22 @@ final class CommandLineExecutionTests: XCTestCase {
         let no  = AppleScriptBridge.AppleScriptObject(name: "no", returnType: .bool, script: "return false")
         XCTAssertEqual(try AppleScriptBridge.executeAppleScriptViaCommandLine(yes) as? Bool, true)
         XCTAssertEqual(try AppleScriptBridge.executeAppleScriptViaCommandLine(no) as? Bool, false)
+    }
+
+    /// Verifies that a substituted list and record are valid AppleScript source: the script reads a value
+    /// back out of each, which only compiles and runs if both rendered correctly.
+    func testSubstitutedCollectionsCompileAndRun() throws {
+        let script = AppleScriptBridge.AppleScriptObject(
+            name: "collections",
+            returnType: .string,
+            variables: ["people": [["name": "Roger", "first name": "R"], ["name": "Sam", "first name": "S"]]],
+            script: """
+                set thePeople to $people
+                set thePerson to item 1 of thePeople
+                return (name of thePerson) & " " & (|first name| of thePerson)
+            """
+        )
+        XCTAssertEqual(try AppleScriptBridge.executeAppleScriptViaCommandLine(script) as? String, "Roger R")
     }
 }
 

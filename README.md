@@ -110,7 +110,7 @@ A placeholder inside quotes — i.e. `"$key"` — always yields AppleScript **te
 > [!NOTE]
 > Keys are substituted longest-first, so `$page` never eats the front of `$pageNumber`.
 
-Strings are escaped on the way in (backslashes and double quotes), which is why they must be quoted: a bare `$name` holding `hello` would compile as an undefined identifier. Numbers and booleans render as bare literals, so a bare `$count` arrives as a real integer with nothing left to do. Quote one of those and it becomes text, and you have to coerce it at the top of the script: `set pageNumber to pageNumber as integer`. Wrapping a value in `AppleScriptRawValue` skips escaping entirely and inserts it as source, which is how you pass lists and records.
+Strings are escaped on the way in (backslashes and double quotes), which is why they must be quoted: a bare `$name` holding `hello` would compile as an undefined identifier. Numbers, booleans and collections render as bare literals, so a bare `$count` arrives as a real integer with nothing left to do. Quote one of those and it becomes text, and you have to coerce it at the top of the script: `set pageNumber to pageNumber as integer`. Wrapping a value in `AppleScriptRawValue` skips escaping entirely and inserts it as source, which is the escape hatch for script fragments no type mapping covers.
 
 | Swift value | Rendered as | Write it as | AppleScript receives | Coercion in AppleScript |
 |---|---|---|---|---|
@@ -122,6 +122,8 @@ Strings are escaped on the way in (backslashes and double quotes), which is why 
 | `Double` | `1.5` | `"$key"` | `text` | `as real` |
 | `Bool` | `true` / `false` | `$key` | `boolean` | — |
 | `Bool` | `true` / `false` | `"$key"` | `text` | `as boolean` |
+| `Array` | `{"a", "b"}` | `$key` | `list` | — |
+| `Dictionary` | `{name:"Roger", age:42}` | `$key` | `record` | — |
 | `AppleScriptRawValue` | verbatim source | `$key` | whatever it evaluates to | — |
 | HFS path (a `String`, from `toHFSPath()`) | escaped text | `"$path"` | `text` | `as alias`, or `as «class furl»` |
 | POSIX path (a `String`) | escaped text | `POSIX file "$path"` | `file` specifier | — or `as alias` if the app wants one |
@@ -172,6 +174,30 @@ try AppleScriptBridge.executeAppleScript(script, with: [
 ])
 ```
 
+#### Lists and records
+
+Arrays become AppleScript lists and dictionaries become records, with every element escaped on the way in. They nest, so an array of dictionaries arrives as a list of records — the shape most scripts actually want:
+
+```swift
+let script = AppleScriptBridge.AppleScriptObject(
+    name: "tagFiles",
+    variables: ["items": [["path": "/tmp/a.txt", "tags": ["draft", "q3"]],
+                          ["path": "/tmp/b.txt", "tags": [] as [String]]]],
+    script: """
+        repeat with anItem in $items
+            set thePath to path of anItem   -- text
+            set theTags to tags of anItem   -- list
+        end repeat
+    """
+)
+```
+
+The placeholder is written bare — `$items`, not `"$items"` — since it renders as a literal, not as text.
+
+Record keys are AppleScript identifiers, not strings, so a key that isn't a plain identifier (`first name`, `2nd`) or that is one of AppleScript's reserved words (`set`, `end`, `to`) is written vertical-bar quoted: `{|first name|:"Roger"}`. Read it back out of the record the same way, with the bars. Keys that *are* plain identifiers are left bare, so a term the target application defines keeps its meaning. Dictionary keys are sorted when rendered, so the same dictionary always produces the same script source.
+
+Two things to know. AppleScript writes an empty list and an empty record identically, as `{}`, so an empty dictionary renders as `{}` and the script decides what it is. And a dictionary key that isn't a `String` is described first, which is what a dictionary bridged from Objective-C or from `JSONSerialization` needs.
+
 ### Return types
 
 | `returnType` | Swift result |
@@ -190,7 +216,7 @@ try AppleScriptBridge.executeAppleScript(script, with: [
 
 Every `String` value is escaped on substitution. That's what you want almost all of the time — a path or a filename should arrive as *data*, not as code.
 
-But sometimes the thing you're substituting really is AppleScript source. There's no automatic conversion for a Swift array, for instance, so if you want AppleScript to receive a list you have to write that list out yourself and tell the bridge not to escape it. That's what `AppleScriptRawValue` is for:
+But sometimes the thing you're substituting really is AppleScript source — an expression, a call, a fragment that no type mapping covers. Wrapping it in `AppleScriptRawValue` tells the bridge to insert it unchanged instead of escaping it:
 
 ```swift
 "filesArray": AppleScriptBridge.AppleScriptRawValue(records)  // inserted as code
@@ -199,7 +225,10 @@ But sometimes the thing you're substituting really is AppleScript source. There'
 
 #### Example
 
-Say you want to hand AppleScript a list of file paths. You build the list in Swift:
+Say you want to hand AppleScript a list of file paths, and you build the list yourself:
+
+> [!NOTE]
+> You no longer have to: passing the `[String]` straight through renders the same list, escaped for you. The example is kept because it shows what building source by hand involves, and what the escaping is protecting you from.
 
 ```swift
 let paths = urls.map { "\"\($0.path(percentEncoded: false).appleScriptStringEscaped)\"" }
@@ -298,8 +327,6 @@ The package's own messages are English only, by design. Applications that show e
 ## Versioning
 
 Semantic versioning. `1.x` ships in Swift 5 language mode: `AppleScriptObject` carries `[String: Any]`, which is not `Sendable`, and the API is synchronous. A future `2.0` is planned to adopt Swift 6 strict concurrency with a typed, `Sendable` variable representation.
-
-Also on the list: converting Swift arrays, dictionaries and tuples straight to AppleScript lists and records, so you don't have to build that source by hand and escape it yourself — see [#1](https://github.com/fredsimard/SwiftAppleScriptBridge/issues/1).
 
 ## License
 

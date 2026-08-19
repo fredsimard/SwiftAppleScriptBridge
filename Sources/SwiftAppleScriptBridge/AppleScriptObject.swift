@@ -37,8 +37,9 @@ extension AppleScriptBridge {
     ///
     /// Every `String` passed through `AppleScriptObject.variables` is escaped before substitution, so that
     /// filesystem-derived text (file paths, folder names, filenames) cannot terminate the surrounding string
-    /// literal and inject arbitrary AppleScript. Values that are *meant* to be AppleScript code — a record
-    /// list built by the caller, for instance — must therefore be wrapped in this type to opt out of escaping.
+    /// literal and inject arbitrary AppleScript. Values that are *meant* to be AppleScript code — an expression,
+    /// or a terminology fragment built by the caller — must therefore be wrapped in this type to opt out of
+    /// escaping. Lists and records need no wrapping: a Swift `Array` or `Dictionary` is rendered as one already.
     ///
     /// - Warning: Never wrap unvalidated user input in this type. Anything wrapped here is inserted into the
     /// script unchanged and is executed as code.
@@ -48,7 +49,7 @@ extension AppleScriptBridge {
     /// // Escaped: inserted as data inside a "..." literal.
     /// "theFilePath": url.path(percentEncoded: false)
     /// // Raw: inserted as AppleScript source.
-    /// "itemsArray": AppleScriptBridge.AppleScriptRawValue(#"{{id:"a"}, {id:"b"}}"#)
+    /// "theTarget": AppleScriptBridge.AppleScriptRawValue("front window")
     /// ```
     public struct AppleScriptRawValue: Sendable {
 
@@ -71,7 +72,7 @@ extension AppleScriptBridge {
     /// - Properties:
     ///   - `name`: Mandatory. A unique name identifying the script. Useful for logging or display.
     ///   - `returnType`: The expected return type from the AppleScript execution. Defaults to `.none` if no value is provided.
-    ///   - `variables`: An optional dictionary of predefined variables used to replace placeholders in the script. `String` values are escaped on substitution; wrap AppleScript source in `AppleScriptRawValue` to insert it verbatim.
+    ///   - `variables`: An optional dictionary of predefined variables used to replace placeholders in the script. `String` values are escaped on substitution, and `Array` and `Dictionary` values are rendered as AppleScript lists and records; wrap AppleScript source in `AppleScriptRawValue` to insert it verbatim.
     ///   - `script`: Mandatory. The raw AppleScript source, with optional `$key` placeholders for dynamic substitution with elements in `variables` when using the `preparedScript` function. A placeholder holding text must be written inside a quoted literal (`"$key"`); one holding a number or a boolean must be written bare (`$key`).
     ///
     /// - Initializer:
@@ -152,23 +153,113 @@ extension AppleScriptBridge {
         ///
         /// Text is escaped so that quotes and backslashes coming from file paths, folder names or filenames stay
         /// inside their AppleScript string literal instead of being parsed as code. Numbers and booleans are
-        /// rendered as AppleScript literals, and `AppleScriptRawValue` is passed through untouched. Any other type
-        /// is described and escaped, so an unforeseen type fails safe.
+        /// rendered as AppleScript literals, arrays and dictionaries as AppleScript lists and records, and
+        /// `AppleScriptRawValue` is passed through untouched. Any other type is described and escaped, so an
+        /// unforeseen type fails safe.
         ///
-        /// - Parameter value: The variable value to render.
+        /// - Parameters:
+        ///   - value: The variable value to render.
+        ///   - quotingText: Whether text carries its own quotation marks. A placeholder is written inside the
+        ///   script's own quotes (`"$key"`), so a value substituted there must not add a second pair. An element
+        ///   of a list or a record has no quotes around it in the script, so it has to supply its own. Defaults
+        ///   to `false`.
         /// - Returns: The text to insert in place of the placeholder.
-        private static func substitution(for value: Any) -> String {
+        private static func substitution(for value: Any, quotingText: Bool = false) -> String {
             let value = unwrappedNumber(value)
 
+            /// Escapes text, adding the surrounding quotes only where the script does not already provide them.
+            func text(_ string: String) -> String {
+                quotingText ? "\"" + string.appleScriptStringEscaped + "\"" : string.appleScriptStringEscaped
+            }
+
             switch value {
-                case let raw    as AppleScriptRawValue : return raw.source
-                case let string as String              : return string.appleScriptStringEscaped
-                case let bool   as Bool                : return bool ? "true" : "false"
-                case let int    as Int                 : return String(int)
-                case let double as Double              : return String(double)
-                default                                : return String(describing: value).appleScriptStringEscaped
+                case let raw        as AppleScriptRawValue : return raw.source
+                case let string     as String              : return text(string)
+                case let bool       as Bool                : return bool ? "true" : "false"
+                case let int        as Int                 : return String(int)
+                case let double     as Double              : return String(double)
+                case let array      as [Any]               : return list(for: array)
+                case let dictionary as [AnyHashable: Any]  : return record(for: dictionary)
+                default                                    : return text(String(describing: value))
             }
         }
+
+        /// Renders a Swift array as an AppleScript list.
+        ///
+        /// Elements go back through `substitution(for:)`, so escaping and literal rendering live in one place and
+        /// nesting works: an array of dictionaries becomes a list of records.
+        ///
+        /// - Parameter array: The array to render.
+        /// - Returns: An AppleScript list literal, `{}` if the array is empty.
+        private static func list(for array: [Any]) -> String {
+            "{" + array.map { substitution(for: $0, quotingText: true) }.joined(separator: ", ") + "}"
+        }
+
+        /// Renders a Swift dictionary as an AppleScript record.
+        ///
+        /// Values go back through `substitution(for:)`, so nesting works and escaping stays in one place. Keys are
+        /// sorted, because a Swift dictionary is unordered and a script whose source changes from one run to the
+        /// next is neither readable in a log nor testable. AppleScript records are unordered too, so sorting costs
+        /// nothing. Sorting is on the key as written rather than on its rendered form, so quoting does not
+        /// reorder anything. A key that is not a `String` is described first, which is what a dictionary bridged
+        /// from Objective-C or from `JSONSerialization` needs.
+        ///
+        /// - Parameter dictionary: The dictionary to render.
+        /// - Returns: An AppleScript record literal, `{}` if the dictionary is empty.
+        ///
+        /// - Note: AppleScript writes an empty record and an empty list the same way, as `{}`. An empty dictionary
+        /// therefore renders as `{}`, and the script decides what to do with it.
+        private static func record(for dictionary: [AnyHashable: Any]) -> String {
+            let pairs = dictionary
+                .map { (String(describing: $0.key), $0.value) }
+                .sorted { $0.0 < $1.0 }
+                .map { "\(recordKey(for: $0.0)):\(substitution(for: $0.1, quotingText: true))" }
+            return "{" + pairs.joined(separator: ", ") + "}"
+        }
+
+        /// Renders a dictionary key as an AppleScript record key.
+        ///
+        /// AppleScript record keys are identifiers, not strings. A key that reads as a plain identifier is left
+        /// bare, so that a term the target application defines keeps its meaning: `{name:"Roger"}` sets that
+        /// application's `name` property, while `{|name|:"Roger"}` would define an unrelated property of the
+        /// caller's own. Anything else — a key holding spaces or punctuation, or one of AppleScript's reserved
+        /// words — is vertical-bar quoted, which is the only way such a key can be written at all.
+        ///
+        /// - Parameter key: The dictionary key, already converted to text.
+        /// - Returns: The key as an AppleScript identifier, quoted only if it has to be.
+        private static func recordKey(for key: String) -> String {
+            let isPlainIdentifier = !key.isEmpty
+                && key.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "_") }
+                && !(key.first?.isNumber ?? true)
+                && !reservedWords.contains(key.lowercased())
+
+            guard !isPlainIdentifier else { return key }
+
+            // Inside vertical bars, a backslash escapes the character after it, so both it and the closing
+            // bar have to be escaped for the key to survive intact.
+            let escaped = key
+                .replacingOccurrences(of: "\\", with: "\\\\")
+                .replacingOccurrences(of: "|", with: "\\|")
+            return "|" + escaped + "|"
+        }
+
+        /// AppleScript's reserved words, which cannot appear bare as a record key.
+        ///
+        /// Compared against the lowercased key, as AppleScript identifiers are case-insensitive. Multi-word
+        /// operators (`apart from`, `out of`) cannot be written as a single identifier and are omitted.
+        private static let reservedWords: Set<String> = [
+            "about", "above", "after", "against", "and", "apart", "around", "as", "aside", "at",
+            "back", "before", "beginning", "behind", "below", "beneath", "beside", "between", "but", "by",
+            "considering", "contain", "contains", "continue", "copy", "div", "does", "eighth", "else", "end",
+            "equal", "equals", "error", "every", "exit", "false", "fifth", "first", "for", "fourth",
+            "from", "front", "get", "given", "global", "if", "ignoring", "in", "instead", "into",
+            "is", "it", "its", "last", "local", "me", "middle", "mod", "my", "ninth",
+            "not", "of", "on", "onto", "or", "out", "over", "prop", "property", "put",
+            "ref", "reference", "repeat", "return", "returning", "script", "second", "set", "seventh", "since",
+            "sixth", "some", "tell", "tenth", "that", "the", "then", "third", "through", "thru",
+            "timeout", "times", "to", "transaction", "true", "try", "until", "where", "while", "whose",
+            "with", "without"
+        ]
 
         /// Unwraps an `NSNumber` into the Swift type it actually carries, leaving any other value untouched.
         ///

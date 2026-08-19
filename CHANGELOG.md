@@ -8,6 +8,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 Nothing yet.
 
+## [1.1.0] — 2026-08-19
+
+### Added
+
+- Swift collections are now rendered as their AppleScript equivalents on substitution: an `Array` becomes a list, a `Dictionary` becomes a record, and the two nest, so an array of dictionaries arrives as a list of records. Elements are escaped by the same rules as any other value, so building AppleScript source by hand and wrapping it in `AppleScriptRawValue` is no longer the only way to pass a list. Both render as bare literals, written `$key` rather than `"$key"`. Closes [#1](https://github.com/fredsimard/SwiftAppleScriptBridge/issues/1).
+  - Record keys that are not plain AppleScript identifiers — keys holding spaces or punctuation, and AppleScript's reserved words — are vertical-bar quoted (`{|first name|:"Roger"}`), which is the only way such a key can be written. Keys that *are* plain identifiers are left bare, so a term the target application defines keeps its meaning.
+  - Dictionary keys are sorted when rendered, so the same dictionary always produces the same script source. A key that is not a `String` is described first, which is what a dictionary bridged from Objective-C or from `JSONSerialization` needs.
+  - An empty dictionary renders as `{}`, which is also how AppleScript writes an empty list. The script decides which it is.
+
+### Changed
+
+- An `Array` or `Dictionary` passed as a variable used to fall through to `String(describing:)` and arrive as text such as `["a", "b"]`. It now arrives as a real AppleScript list or record. The public API is unchanged and nothing stops compiling on the Swift side, but a script written against the old text form has to be updated — that output was almost certainly a bug rather than something to depend on.
+- A collection substituted into a *quoted* placeholder (`"$key"`) now produces a syntax error rather than text, since the rendered literal carries its own quotation marks: `"{"a", "b"}"`. Write these placeholders bare, as `$key`. The failure is loud and happens at compile time, before the script runs.
+
 ## [1.0.1] — 2026-08-16
 
 Six fixes from a full audit of the package. The public API is unchanged, but three of them change what an existing call returns in cases where the old result was wrong.
@@ -56,6 +70,7 @@ First public release.
 - Ships in Swift 5 language mode. `AppleScriptObject` carries `[String: Any]`, which is not `Sendable`; a strict-concurrency redesign is planned for 2.0.
 - An app using this package cannot be sandboxed and so cannot ship on the Mac App Store. Developer ID signing and notarization are unaffected.
 
-[Unreleased]: https://github.com/fredsimard/SwiftAppleScriptBridge/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/fredsimard/SwiftAppleScriptBridge/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/fredsimard/SwiftAppleScriptBridge/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/fredsimard/SwiftAppleScriptBridge/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/fredsimard/SwiftAppleScriptBridge/releases/tag/v1.0.0

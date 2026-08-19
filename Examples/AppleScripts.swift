@@ -295,12 +295,12 @@ enum AppleScripts {
 
     /// Moves several items to a destination folder in a single script.
     ///
-    /// The list of paths has no Swift equivalent the bridge can render on its own, so the caller
-    /// builds the AppleScript list itself and passes it as an `AppleScriptRawValue`, which opts
-    /// out of escaping. Building that list is the caller's job — and so is escaping every path
-    /// inside it, with `appleScriptStringEscaped`. See `moveItems(_:to:)` below.
+    /// The paths are passed as a Swift `[String]`, which the bridge renders as an AppleScript list
+    /// with every element escaped. The placeholder is written bare — `$itemPaths`, not
+    /// `"$itemPaths"` — because it renders as a list literal rather than as text. See
+    /// `moveItems(_:to:)` below.
     ///
-    /// - Parameter itemPaths: **SET AT RUNTIME**: Raw AppleScript list of quoted POSIX paths.
+    /// - Parameter itemPaths: **SET AT RUNTIME**: POSIX paths of the items to move, as `[String]`.
     /// - Parameter destinationPath: **SET AT RUNTIME**: POSIX path of the destination folder.
     /// - Returns: An `Int` with the number of items moved.
     static let moveItems = AppleScriptBridge.AppleScriptObject(
@@ -401,23 +401,24 @@ enum FinderTasks {
 
     /// Moves several items to a destination folder.
     ///
-    /// Shows the one case where escaping is the caller's responsibility: the AppleScript list is
-    /// built here, so every path in it must go through `appleScriptStringEscaped` before being
-    /// wrapped in an `AppleScriptRawValue`. Wrapping unescaped text would let a filename containing
-    /// a quote break out of its literal and run as code.
+    /// Shows a Swift collection crossing over as an AppleScript list: the `[String]` is rendered as
+    /// `{"...", "..."}` with each path escaped on the way in, so a filename containing a quote
+    /// cannot break out of its literal. Dictionaries cross over the same way, as records, and the
+    /// two nest — an `[[String: Any]]` arrives as a list of records.
+    ///
+    /// `AppleScriptRawValue` is still there for source no type mapping covers, such as an
+    /// expression or a terminology fragment the caller assembled:
+    /// `"target": AppleScriptBridge.AppleScriptRawValue("front window")`.
     ///
     /// - Parameters:
     ///   - urls: The items to move.
     ///   - destination: The folder to move them into.
     /// - Returns: The number of items actually moved.
     static func moveItems(_ urls: [URL], to destination: URL) -> Int {
-        let quotedPaths = urls.map { "\"\($0.path(percentEncoded: false).appleScriptStringEscaped)\"" }
-        let appleScriptList = "{" + quotedPaths.joined(separator: ", ") + "}"
-
         let result = try? AppleScriptBridge.executeAppleScript(
             AppleScripts.moveItems,
             with: [
-                "itemPaths": AppleScriptBridge.AppleScriptRawValue(appleScriptList),
+                "itemPaths": urls.map { $0.path(percentEncoded: false) },
                 "destinationPath": destination.path(percentEncoded: false)
             ]
         )
