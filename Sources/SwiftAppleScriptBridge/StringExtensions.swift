@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import CoreServices
 
 // MARK: - PATHS
 
@@ -186,5 +187,31 @@ extension String {
             return result
         }
         return nil
+    }
+}
+
+// MARK: - FOUR-CHARACTER CODES
+
+extension String {
+
+    /// Creates the text of an Apple event four-character code (e.g., `'msng'` -> `"msng"`).
+    ///
+    /// Codes are four bytes read as MacRoman, which maps every possible byte, so the conversion always succeeds.
+    ///
+    /// - Parameter appleScriptFourCharCode: The code to render, as carried by `AppleScriptValue.constant`.
+    public init(appleScriptFourCharCode code: FourCharCode) {
+        let bytes = (0..<4).map { UInt8(truncatingIfNeeded: code >> (8 * (3 - $0))) }
+        self = String(bytes: bytes, encoding: .macOSRoman) ?? ""
+    }
+
+    /// The Apple event four-character code this text represents (e.g., `"msng"` -> `'msng'`).
+    ///
+    /// Use it to compare an `AppleScriptValue.constant` against a code from an application's dictionary:
+    /// `if case .constant("autp".appleScriptFourCharCode) = value`.
+    ///
+    /// - Returns: The code, or `nil` unless the text is exactly four MacRoman-encodable characters.
+    public var appleScriptFourCharCode: FourCharCode? {
+        guard let bytes = data(using: .macOSRoman), bytes.count == 4 else { return nil }
+        return bytes.reduce(0) { $0 << 8 | FourCharCode($1) }
     }
 }

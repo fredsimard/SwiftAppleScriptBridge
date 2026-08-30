@@ -60,12 +60,15 @@ public class AppleScriptBridge: NSObject {
     ///   - runtimeVariables: Variables resolved at call time, overriding the object's predefined ones of the
     ///   same name. Defaults to `nil`.
     /// - Returns: The result of the script, cast to the expected type (`Int`, `String`, `Bool`, `[String]`,
-    /// `[String: Any]`, or `nil`).
+    /// `[String: Any]`, `AppleScriptValue`, or `nil`).
     /// - Throws:
     ///   - `AppleScriptError.failedToInitScript` if the script cannot be initialized.
     ///   - `AppleScriptError.executionError` if execution fails and returns an error.
     ///
     /// - Note: For `.list` and `.record`, raw strings are returned and may need further parsing.
+    ///
+    /// - Note: `.wildCard` skips the coercion entirely and returns an `AppleScriptValue` built from the Apple
+    /// event descriptor, so a script that answers with a different type depending on state can be switched on.
     ///
     /// - Note: A script returning `0` yields `0`, not `nil`. Failure is reported by throwing, so callers can tell
     /// "the target app answered zero" from "the target app did not answer" — a distinction that open-document
@@ -92,13 +95,14 @@ public class AppleScriptBridge: NSObject {
         if let error = error { throw AppleScriptError.executionError(String(describing: error)) }
 
         switch AppleScript.returnType {
-            case .int:    return Int(result.int32Value)
-            case .string: return result.stringValue
-            case .bool:   return result.int32Value != 0 ? true : false
-            case .list:   return result.stringValue?.components(separatedBy: .newlines)
-            case .record: return result.stringValue?.parseSimpleAppleScriptRecord()
-            case .json:   return result.stringValue?.parseJSONStringFromAppleScript()
-            case .none:   return nil
+            case .int:      return Int(result.int32Value)
+            case .string:   return result.stringValue
+            case .bool:     return result.int32Value != 0 ? true : false
+            case .list:     return result.stringValue?.components(separatedBy: .newlines)
+            case .record:   return result.stringValue?.parseSimpleAppleScriptRecord()
+            case .json:     return result.stringValue?.parseJSONStringFromAppleScript()
+            case .wildCard: return AppleScriptValue(descriptor: result)
+            case .none:     return nil
         }
     }
 
@@ -116,8 +120,13 @@ public class AppleScriptBridge: NSObject {
     /// - Throws:
     ///   - `AppleScriptError.executionError` if the process fails to launch or run.
     ///   - `AppleScriptError.failedToReadOutput` if the output cannot be interpreted.
+    ///   - `AppleScriptError.unsupportedReturnType` if the script declares `.wildCard`.
     ///
     /// - Note: For `.list` and `.record`, raw strings are returned and may need further parsing.
+    ///
+    /// - Note: `.wildCard` is not available here. `osascript` prints its result as text, so the descriptor that
+    /// carries the actual type is gone before this method can read anything, and no honest value can be built
+    /// from what arrives. The script is not run at all in that case. Use `executeAppleScript(_:with:)` instead.
     ///
     /// - Note: Spawning `/usr/bin/osascript` is blocked by the App Sandbox. Use this only from a
     /// non-sandboxed application.
@@ -125,6 +134,12 @@ public class AppleScriptBridge: NSObject {
     /// - Note: The fully substituted script is passed to `osascript` as a command-line argument, where any
     /// local process can read it with `ps`. Prefer `executeAppleScript(_:with:)` if variables carry secrets.
     public static func executeAppleScriptViaCommandLine(_ AppleScript: AppleScriptObject, with runtimeVariables: [String: Any]? = nil) throws -> Any? {
+        // Checked before the process is launched, so a script declaring a type this method cannot produce has
+        // no chance to act on the target application first.
+        if case .wildCard = AppleScript.returnType {
+            throw AppleScriptError.unsupportedReturnType(.wildCard)
+        }
+
         let process = Process()
         let pipe = Pipe()
 
@@ -151,13 +166,14 @@ public class AppleScriptBridge: NSObject {
         }
 
         switch AppleScript.returnType {
-            case .int:    return Int(result)
-            case .string: return result
-            case .bool:   return result.caseInsensitiveCompare("true") == .orderedSame || (Int(result) ?? 0) != 0
-            case .list:   return result.components(separatedBy: "\r")
-            case .record: return result.parseSimpleAppleScriptRecord()
-            case .json:   return result.parseJSONStringFromAppleScript()
-            case .none:   return nil
+            case .int:      return Int(result)
+            case .string:   return result
+            case .bool:     return result.caseInsensitiveCompare("true") == .orderedSame || (Int(result) ?? 0) != 0
+            case .list:     return result.components(separatedBy: "\r")
+            case .record:   return result.parseSimpleAppleScriptRecord()
+            case .json:     return result.parseJSONStringFromAppleScript()
+            case .wildCard: return nil // Unreachable: rejected above, before the script ran.
+            case .none:     return nil
         }
     }
 

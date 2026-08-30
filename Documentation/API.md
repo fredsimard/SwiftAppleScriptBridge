@@ -4,6 +4,7 @@ Every public type, method and property in the package, grouped by the file it li
 
 - [AppleScriptBridge](#applescriptbridge) — executing scripts, logging, permissions
 - [AppleScriptObject](#applescriptobject) — the script model, return types, raw values
+- [AppleScriptValue](#applescriptvalue) — the uncoerced result of a `.wildCard` script
 - [AppleScriptError](#applescripterror) — error cases
 - [String and URL extensions](#string-and-url-extensions) — escaping, paths, result parsing
 
@@ -58,7 +59,7 @@ Compiles and runs a script with `NSAppleScript`, and interprets the result accor
 | `AppleScript` | The script object to execute. |
 | `runtimeVariables` | Variables resolved at call time, overriding the object's predefined ones of the same name. Defaults to `nil`. |
 
-**Returns** the script's result cast to the declared type — `Int`, `String`, `Bool`, `[String]`, `[String: Any]`, or `nil` for `.none`.
+**Returns** the script's result cast to the declared type — `Int`, `String`, `Bool`, `[String]`, `[String: Any]`, [`AppleScriptValue`](#applescriptvalue) for `.wildCard`, or `nil` for `.none`.
 
 **Throws**
 
@@ -82,7 +83,7 @@ public static func executeAppleScriptViaCommandLine(
 ) throws -> Any?
 ```
 
-Runs the same script through `/usr/bin/osascript` in a subprocess instead. Useful if you hit an `NSAppleScript` quirk, or want a long script isolated from your process. Parameters and return values match `executeAppleScript(_:with:)`, with two differences: `.list` splits on `\r` rather than on newlines, and a failing script does not throw — only a launch failure or undecodable output does.
+Runs the same script through `/usr/bin/osascript` in a subprocess instead. Useful if you hit an `NSAppleScript` quirk, or want a long script isolated from your process. Parameters and return values match `executeAppleScript(_:with:)`, with three differences: `.list` splits on `\r` rather than on newlines, a failing script does not throw — only a launch failure or undecodable output does — and `.wildCard` is refused.
 
 **Throws**
 
@@ -90,6 +91,7 @@ Runs the same script through `/usr/bin/osascript` in a subprocess instead. Usefu
 |---|---|
 | `AppleScriptError.executionError` | The process failed to launch. |
 | `AppleScriptError.failedToReadOutput` | The output was not valid UTF-8. |
+| `AppleScriptError.unsupportedReturnType` | The script declared `.wildCard`. Checked before the process is launched, so the script does not run. |
 
 > [!WARNING]
 > Script errors are **not** detected. `stderr` is piped into the same pipe as `stdout` and the exit status is ignored, so a failing script returns osascript's error text as if it were a result — a `.string` call yields the error message, an `.int` call yields `nil`. Validate what comes back if you use this method.
@@ -155,7 +157,10 @@ How a script's result should be interpreted.
 | `.list` | `[String]` |
 | `.record` | `[String: Any]` — flat records only |
 | `.json` | `[String: Any]` — for nested structures; build the JSON inside the script |
+| `.wildCard` | [`AppleScriptValue`](#applescriptvalue) — the result with its actual type, uncoerced |
 | `.none` | `nil` |
+
+`.wildCard` is the only case that does not coerce, and the only one `executeAppleScriptViaCommandLine(_:with:)` refuses.
 
 ### `AppleScriptRawValue`
 
@@ -239,6 +244,60 @@ A human-readable, multi-line dump of the script's name, return type, variables a
 
 ---
 
+## AppleScriptValue
+
+`Sources/SwiftAppleScriptBridge/AppleScriptValue.swift`
+
+```swift
+public enum AppleScriptValue: Equatable {
+    case double(Double)
+    case int(Int)
+    case string(String)
+    case bool(Bool)
+    case date(Date)
+    case fileURL(URL)
+    case missingValue
+    case constant(FourCharCode)
+    case list([AppleScriptValue])
+    case record([String: AppleScriptValue])
+    case unknown(NSAppleEventDescriptor)
+}
+```
+
+What a `.wildCard` script returns. Built from the Apple event descriptor's own type, so nothing is coerced: a property that answers with a number most of the time and `missing value` otherwise can be told apart at the call site.
+
+| Case | Descriptor types | Carries |
+|---|---|---|
+| `.double` | `'doub'`, `'sing'`, `'ldbl'` | `Double`. AppleScript answers with a real for any whole number its 32-bit integer cannot hold, and for overflow, which is `Double.infinity`. |
+| `.int` | `'shor'`, `'ushr'`, `'long'`, `'magn'`, `'comp'`, `'ucom'` | `Int`, read at the descriptor's own width rather than coerced to 32 bits. |
+| `.string` | `'utxt'`, `'utf8'`, `'ut16'`, `'TEXT'`, `'cstr'` | `String`. |
+| `.bool` | `'bool'`, `'true'`, `'fals'` | `Bool`. |
+| `.date` | `'ldt '` | `Date`. |
+| `.fileURL` | `'furl'`, `'alis'`, `'bmrk'` | `URL`. |
+| `.missingValue` | `'type'` carrying `'msng'` | Nothing — AppleScript's `missing value`. |
+| `.constant` | `'enum'`, `'type'`, `'prop'`, `'keyw'` | `FourCharCode`, raw. |
+| `.list` | `'list'` | `[AppleScriptValue]`, decoded recursively. |
+| `.record` | `'reco'` | `[String: AppleScriptValue]`, decoded recursively. |
+| `.unknown` | anything else | The `NSAppleEventDescriptor`, untouched. |
+
+> [!NOTE]
+> Record keys come through as the caller wrote them only when AppleScript did not recognize them as terminology. `{name:"Roger", age:42}` decodes as `["pnam": .string("Roger"), "age": .int(42)]`, because `name` compiles to the `'pnam'` property. Application-returned records are terminology throughout, so expect codes there.
+
+> [!NOTE]
+> A constant carries no meaning of its own: what `'autp'` means comes from the application's dictionary. Compare it against the codes your target documents.
+
+### `init(descriptor:)`
+
+```swift
+public init(descriptor: NSAppleEventDescriptor)
+```
+
+Decodes a descriptor into a value, recursively. `executeAppleScript(_:with:)` calls this for a `.wildCard` script; call it yourself to decode a descriptor you got some other way, or one you coerced out of an `.unknown`.
+
+A descriptor whose type is not decoded — or one that is, but whose value cannot be read, such as an unsigned 64-bit integer larger than `Int.max` — yields `.unknown` rather than a wrong value.
+
+---
+
 ## AppleScriptError
 
 `Sources/SwiftAppleScriptBridge/AppleScriptError.swift`
@@ -248,6 +307,7 @@ public enum AppleScriptError: Error {
     case failedToInitScript
     case failedToReadOutput
     case executionError(String)
+    case unsupportedReturnType(AppleScriptReturnType)
     case genericMessage(String)
 }
 ```
@@ -257,6 +317,7 @@ public enum AppleScriptError: Error {
 | `failedToInitScript` | The script could not be compiled. |
 | `failedToReadOutput` | It ran, but the output could not be read. |
 | `executionError(String)` | It ran and returned an error, carried as text. |
+| `unsupportedReturnType(AppleScriptReturnType)` | The execution method cannot produce the declared type. Today that is `.wildCard` through `executeAppleScriptViaCommandLine(_:with:)`. |
 | `genericMessage(String)` | A catch-all with your own message, for your code to throw. |
 
 ### `description`
@@ -305,6 +366,21 @@ public func parseJSONStringFromAppleScript() -> [String: Any]?
 ```
 
 Decodes a JSON object built inside AppleScript — by string concatenation, typically — into a dictionary. Returns `nil` if the text isn't valid JSON, or is valid JSON that isn't an object. Used automatically by the `.json` return type. This is the route for nested structures that `parseSimpleAppleScriptRecord()` can't handle.
+
+### `String.appleScriptFourCharCode` / `String.init(appleScriptFourCharCode:)`
+
+```swift
+public var appleScriptFourCharCode: FourCharCode?
+public init(appleScriptFourCharCode code: FourCharCode)
+```
+
+Convert between an Apple event four-character code and its text. `"msng".appleScriptFourCharCode` gives the code `'msng'`; `String(appleScriptFourCharCode:)` gives `"msng"` back. The property returns `nil` unless the text is exactly four MacRoman-encodable characters.
+
+Use the property to compare an `AppleScriptValue.constant` against a code from an application's dictionary:
+
+```swift
+if case .constant("autp".appleScriptFourCharCode) = value { … }
+```
 
 ### `String.toPOSIXPath()`
 

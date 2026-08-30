@@ -8,6 +8,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 Nothing yet.
 
+## [1.2.0] — 2026-08-29
+
+New API, all of it opt-in: the default path is unchanged. One caveat before you upgrade — `AppleScriptReturnType` and `AppleScriptError` each gained a case, so code that switches over either exhaustively, without a `default`, stops compiling until the new case is handled.
+
+### Added
+
+- A `.wildCard` return type, for the properties that answer with a different *type* depending on state — the `value` of a cell in Numbers is a number, a date, text, a boolean, or `missing value`, the last one meaning the cell is empty. Every other return type coerces that distinction away before Swift sees it. `.wildCard` returns an `AppleScriptValue` built from the Apple event descriptor instead, so the type can be switched on. Closes [#5](https://github.com/fredsimard/SwiftAppleScriptBridge/issues/5).
+  - `AppleScriptValue` decodes numbers, text, booleans, dates, files, `missing value`, application-defined constants, and lists and records, the last two recursively. Anything else arrives as `.unknown`, carrying the descriptor untouched so nothing is lost. Its `init(descriptor:)` is public, for descriptors obtained some other way.
+  - Constants carry their raw `FourCharCode`: what `'autp'` means is defined by the target application's dictionary, not by AppleScript, so there is no general mapping to hand the caller. `missing value` is the exception and has a case of its own.
+  - Record keys come through as written only when AppleScript did not recognize them as its own terminology. `{name:"Roger", age:42}` decodes as `["pnam": .string("Roger"), "age": .int(42)]`, since `name` compiles to the `'pnam'` property before the script ever runs.
+  - Integers are read at the width their descriptor declares rather than through `int32Value`, which answers `0` for anything wider than 32 bits.
+- `String.appleScriptFourCharCode` and `String.init(appleScriptFourCharCode:)`, converting between a four-character code and its text, so an `AppleScriptValue.constant` can be compared against a code from an application's dictionary without building it by hand.
+- `AppleScriptError.unsupportedReturnType(AppleScriptReturnType)`, thrown when an execution method cannot produce the declared type.
+
+### Notes
+
+- `.wildCard` works through `executeAppleScript(_:with:)` only. `osascript` prints its result as text, so the descriptor carrying the actual type is gone before `executeAppleScriptViaCommandLine(_:with:)` could read it; that method throws `.unsupportedReturnType` before launching the process, so the script does not run.
+
 ## [1.1.0] — 2026-08-19
 
 ### Added
@@ -70,7 +88,8 @@ First public release.
 - Ships in Swift 5 language mode. `AppleScriptObject` carries `[String: Any]`, which is not `Sendable`; a strict-concurrency redesign is planned for 2.0.
 - An app using this package cannot be sandboxed and so cannot ship on the Mac App Store. Developer ID signing and notarization are unaffected.
 
-[Unreleased]: https://github.com/fredsimard/SwiftAppleScriptBridge/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/fredsimard/SwiftAppleScriptBridge/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/fredsimard/SwiftAppleScriptBridge/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/fredsimard/SwiftAppleScriptBridge/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/fredsimard/SwiftAppleScriptBridge/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/fredsimard/SwiftAppleScriptBridge/releases/tag/v1.0.0

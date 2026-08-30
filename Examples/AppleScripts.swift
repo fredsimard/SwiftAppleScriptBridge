@@ -264,6 +264,30 @@ enum AppleScripts {
         """
     )
 
+    // MARK: - WILDCARD
+
+    /// Reads a property that answers with a constant rather than with a value, without coercing it.
+    ///
+    /// A disk's `format` is one of the constants in the Finder's `edfm` enumeration — `APFS format`
+    /// is `'dfap'`, `ExFAT format` is `'dfxf'` — and none of the coercing return types can carry
+    /// one: `.string` yields `nil` and `.int` yields `0`. `.wildCard` hands over what the Apple event
+    /// actually carried, so the constant arrives as `.constant` with its four-character code intact.
+    ///
+    /// The same applies to any property whose *type* depends on state, which is the case this return
+    /// type exists for: a number most of the time, `missing value` when there is nothing to report.
+    ///
+    /// - Parameter diskName: **SET AT RUNTIME**: Name of the disk to inspect, without a colon.
+    /// - Returns: An `AppleScriptValue`, `.constant` for any disk the Finder can describe.
+    static let diskFormat = AppleScriptBridge.AppleScriptObject(
+        name: "diskFormat",
+        returnType: .wildCard,
+        script: """
+            tell application id "\(targetApp)"
+                return format of disk "$diskName"
+            end tell
+        """
+    )
+
     // MARK: - VARIABLES AND RAW VALUES
 
     /// Creates a folder inside a parent folder, showing how the three placeholder forms differ.
@@ -396,6 +420,37 @@ enum FinderTasks {
         return items.compactMap { entry in
             guard let name = entry["name"] as? String, let size = entry["size"] as? Int else { return nil }
             return (name, size)
+        }
+    }
+
+    /// Reads the filesystem format of a disk.
+    ///
+    /// The shape of a `.wildCard` call site: cast the result once, then switch on the type the script
+    /// actually answered with rather than on the one you hoped for. Constants carry no meaning of their
+    /// own — what `'dfap'` means comes from the Finder's dictionary — so the codes are compared here
+    /// against the ones that dictionary documents.
+    ///
+    /// - Parameter name: The disk to inspect, for example `"Macintosh HD"`.
+    /// - Returns: The format's name, or a description of what came back instead.
+    static func format(ofDisk name: String) -> String {
+        let result = try? AppleScriptBridge.executeAppleScript(
+            AppleScripts.diskFormat,
+            with: ["diskName": name]
+        )
+
+        switch result as? AppleScriptBridge.AppleScriptValue {
+            case .constant(let code):
+                let format = String(appleScriptFourCharCode: code)
+                switch format {
+                    case "dfap": return "APFS"
+                    case "dfh+": return "Mac OS Extended"
+                    case "dfxf": return "ExFAT"
+                    case "dfsm": return "SMB"
+                    default:     return "other (\(format))"
+                }
+            case .missingValue: return "no format reported"
+            case .none:         return "the script failed"
+            default:            return "unexpected type"
         }
     }
 

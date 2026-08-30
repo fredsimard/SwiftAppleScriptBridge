@@ -208,9 +208,53 @@ Two things to know. AppleScript writes an empty list and an empty record identic
 | `.list` | `[String]` |
 | `.record` | `[String: Any]` — flat records only |
 | `.json` | `[String: Any]` — for nested structures; build the JSON inside the script |
+| `.wildCard` | `AppleScriptValue` — whatever the script returned, with its actual type |
 | `.none` | `nil` |
 
 `.record` handles a flat `{name:"John", age:42}` and correctly leaves colons and commas that appear *inside* quoted values alone. For anything nested, build a JSON string in AppleScript and use `.json`.
+
+#### When the type is the answer
+
+Every return type above coerces: you declare one, and whatever comes back is read as that. Some application properties don't work that way — they answer with a *different type* depending on state. The `value` of a cell in Numbers is documented as "number, date, text, boolean, or `missing value`", the last one meaning the cell is empty. Declare `.int` there and an empty cell is indistinguishable from a cell holding zero.
+
+`.wildCard` skips the coercion. The result comes back as an `AppleScriptValue` built from what the Apple event actually carried, so you switch on the type instead of assuming it:
+
+```swift
+let script = AppleScriptBridge.AppleScriptObject(
+    name: "cellValue",
+    returnType: .wildCard,
+    script: """
+        tell application "Numbers" to tell document 1 to tell sheet 1
+            return value of cell "$cell" of table 1
+        end tell
+    """
+)
+
+switch try AppleScriptBridge.executeAppleScript(script, with: ["cell": "B2"]) as? AppleScriptBridge.AppleScriptValue {
+    case .double(let number): print("number: \(number)")
+    case .string(let text):   print("text: \(text)")
+    case .date(let date):     print("date: \(date)")
+    case .bool(let flag):     print("boolean: \(flag)")
+    case .missingValue:       print("the cell is empty")
+    default:                  break
+}
+```
+
+| `AppleScriptValue` case | What it carries |
+|---|---|
+| `.double` / `.int` / `.string` / `.bool` | The scalar, as its own type |
+| `.date` | `Date` |
+| `.fileURL` | `URL`, for an alias or a file URL |
+| `.missingValue` | AppleScript's `missing value` |
+| `.constant` | An application-defined constant, as its raw `FourCharCode` |
+| `.list` / `.record` | `[AppleScriptValue]` / `[String: AppleScriptValue]`, decoded recursively |
+| `.unknown` | The `NSAppleEventDescriptor` itself, for anything not decoded above |
+
+A few things to know:
+
+- **Constants come as raw codes.** There is no general mapping from a four-character code to a meaning — what `'autp'` means is defined by the application's dictionary, not by AppleScript. Compare against the codes your target documents: `if case .constant("autp".appleScriptFourCharCode) = value`. `missing value` is the one exception, and gets a case of its own.
+- **Record keys are as written, or as compiled.** A key you wrote yourself comes through by name, but a key AppleScript recognizes as its own terminology is compiled to a four-character code before the script runs. `{name:"Roger", age:42}` decodes as `["pnam": .string("Roger"), "age": .int(42)]`.
+- **`NSAppleScript` only.** `executeAppleScriptViaCommandLine` throws `.unsupportedReturnType` on a `.wildCard` script, without running it. `osascript` prints its result as text, so the type is already gone by the time that method could read anything.
 
 ### Escaping, and how to opt out
 
