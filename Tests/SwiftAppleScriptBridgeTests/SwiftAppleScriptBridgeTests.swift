@@ -9,6 +9,7 @@
 //
 
 import XCTest
+import Carbon
 @testable import SwiftAppleScriptBridge
 
 // MARK: - ESCAPING
@@ -268,6 +269,158 @@ final class JSONParsingTests: XCTestCase {
     }
 }
 
+// MARK: - WILDCARD VALUES
+
+final class WildCardValueTests: XCTestCase {
+
+    private typealias Value = AppleScriptBridge.AppleScriptValue
+
+    /// Verifies that the scalar types come back as themselves, rather than coerced into a declared type.
+    func testScalarDescriptorsKeepTheirType() {
+        XCTAssertEqual(Value(descriptor: NSAppleEventDescriptor(double: 1.5)), .double(1.5))
+        XCTAssertEqual(Value(descriptor: NSAppleEventDescriptor(int32: 42)), .int(42))
+        XCTAssertEqual(Value(descriptor: NSAppleEventDescriptor(string: "hello")), .string("hello"))
+        XCTAssertEqual(Value(descriptor: NSAppleEventDescriptor(boolean: true)), .bool(true))
+        XCTAssertEqual(Value(descriptor: NSAppleEventDescriptor(boolean: false)), .bool(false))
+    }
+
+    /// Verifies that a date and a file arrive as `Date` and `URL`, not as the text they would coerce to.
+    func testDatesAndFilesAreDecoded() {
+        // Apple event dates carry whole seconds, so the reference date keeps the comparison exact.
+        let date = Date(timeIntervalSinceReferenceDate: 0)
+        XCTAssertEqual(Value(descriptor: NSAppleEventDescriptor(date: date)), .date(date))
+
+        let url = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
+        XCTAssertEqual(Value(descriptor: NSAppleEventDescriptor(fileURL: url)), .fileURL(url))
+    }
+
+    /// Verifies that a 64-bit integer is read from its own bytes, rather than coerced to 32 bits and zeroed.
+    func testWideIntegersAreReadAtTheirOwnWidth() throws {
+        var wide = Int64(9_000_000_000)
+        let descriptor = try XCTUnwrap(
+            NSAppleEventDescriptor(descriptorType: typeSInt64, bytes: &wide, length: MemoryLayout<Int64>.size)
+        )
+        XCTAssertEqual(descriptor.int32Value, 0, "int32Value fails on this descriptor; that is what the decoding works around")
+        XCTAssertEqual(Value(descriptor: descriptor), .int(9_000_000_000))
+    }
+
+    /// Verifies that a value too large for an `Int` yields the descriptor rather than a wrong number.
+    func testUnrepresentableIntegerFallsBackToTheDescriptor() throws {
+        var huge = UInt64.max
+        let descriptor = try XCTUnwrap(
+            NSAppleEventDescriptor(descriptorType: typeUInt64, bytes: &huge, length: MemoryLayout<UInt64>.size)
+        )
+        XCTAssertEqual(Value(descriptor: descriptor), .unknown(descriptor))
+    }
+
+    /// Verifies that `missing value` is recognized, rather than handed over as a bare four-character code.
+    func testMissingValueIsItsOwnCase() {
+        XCTAssertEqual(Value(descriptor: NSAppleEventDescriptor(typeCode: FourCharCode(cMissingValue))), .missingValue)
+    }
+
+    /// Verifies that an application-defined constant keeps its raw code, which is all the caller can compare.
+    func testConstantsCarryTheirFourCharacterCode() throws {
+        let code = try XCTUnwrap("autp".appleScriptFourCharCode)
+        XCTAssertEqual(Value(descriptor: NSAppleEventDescriptor(enumCode: code)), .constant(code))
+        XCTAssertEqual(Value(descriptor: NSAppleEventDescriptor(typeCode: code)), .constant(code))
+    }
+
+    /// Verifies that a list is decoded item by item, and that nesting works.
+    func testListsAreDecodedRecursively() {
+        let inner = NSAppleEventDescriptor.list()
+        inner.insert(NSAppleEventDescriptor(string: "x"), at: 0)
+
+        let list = NSAppleEventDescriptor.list()
+        list.insert(NSAppleEventDescriptor(double: 1.5), at: 0)
+        list.insert(NSAppleEventDescriptor(typeCode: FourCharCode(cMissingValue)), at: 0)
+        list.insert(inner, at: 0)
+
+        XCTAssertEqual(Value(descriptor: list), .list([.double(1.5), .missingValue, .list([.string("x")])]))
+    }
+
+    /// Verifies that an empty list yields an empty list rather than trapping on its index range.
+    func testEmptyListIsDecoded() {
+        XCTAssertEqual(Value(descriptor: NSAppleEventDescriptor.list()), .list([]))
+    }
+
+    /// Verifies that both halves of a record are decoded: the keys AppleScript compiled to four-character
+    /// codes, and the user-defined ones it packed into `keyASUserRecordFields`.
+    func testRecordsDecodeCodedAndUserKeys() throws {
+        let userFields = NSAppleEventDescriptor.list()
+        userFields.insert(NSAppleEventDescriptor(string: "age"), at: 0)
+        userFields.insert(NSAppleEventDescriptor(int32: 42), at: 0)
+
+        let record = NSAppleEventDescriptor.record()
+        record.setDescriptor(NSAppleEventDescriptor(string: "Roger"), forKeyword: try XCTUnwrap("pnam".appleScriptFourCharCode))
+        record.setDescriptor(userFields, forKeyword: FourCharCode(keyASUserRecordFields))
+
+        XCTAssertEqual(Value(descriptor: record), .record(["pnam": .string("Roger"), "age": .int(42)]))
+    }
+
+    /// Verifies that a user-defined key wins over a coded one of the same text, since it is the name the
+    /// caller wrote and therefore the one they will look for.
+    func testUserKeysWinOverCodedKeys() throws {
+        let userFields = NSAppleEventDescriptor.list()
+        userFields.insert(NSAppleEventDescriptor(string: "pnam"), at: 0)
+        userFields.insert(NSAppleEventDescriptor(string: "user"), at: 0)
+
+        let record = NSAppleEventDescriptor.record()
+        record.setDescriptor(NSAppleEventDescriptor(string: "coded"), forKeyword: try XCTUnwrap("pnam".appleScriptFourCharCode))
+        record.setDescriptor(userFields, forKeyword: FourCharCode(keyASUserRecordFields))
+
+        XCTAssertEqual(Value(descriptor: record), .record(["pnam": .string("user")]))
+    }
+
+    /// Verifies that an undecoded type is handed over as the descriptor itself, so nothing is lost.
+    func testUnhandledTypeYieldsTheDescriptor() {
+        let descriptor = NSAppleEventDescriptor(eventClass: kCoreEventClass, eventID: kAEOpenApplication, targetDescriptor: nil, returnID: 0, transactionID: 0)
+        XCTAssertEqual(Value(descriptor: descriptor), .unknown(descriptor))
+    }
+}
+
+// MARK: - WILDCARD EXECUTION
+
+final class WildCardExecutionTests: XCTestCase {
+
+    private typealias Value = AppleScriptBridge.AppleScriptValue
+
+    /// Runs a self-contained script through `NSAppleScript`, which drives no application and so needs no
+    /// Automation permission, and returns what `.wildCard` decoded.
+    private func wildCardResult(of source: String) throws -> Value? {
+        let script = AppleScriptBridge.AppleScriptObject(name: "wildCard", returnType: .wildCard, script: source)
+        return try AppleScriptBridge.executeAppleScript(script) as? Value
+    }
+
+    /// Verifies that one script returning different types, as several application properties do, is decoded
+    /// as those types rather than coerced into one.
+    func testTheSameScriptCanAnswerWithDifferentTypes() throws {
+        XCTAssertEqual(try wildCardResult(of: "return 1.5"), .double(1.5))
+        XCTAssertEqual(try wildCardResult(of: "return 42"), .int(42))
+        XCTAssertEqual(try wildCardResult(of: #"return "hello""#), .string("hello"))
+        XCTAssertEqual(try wildCardResult(of: "return true"), .bool(true))
+        XCTAssertEqual(try wildCardResult(of: "return missing value"), .missingValue)
+    }
+
+    /// Verifies that a whole number too large for AppleScript's 32-bit integer arrives as the real it is,
+    /// rather than as the zero a `.int` script would report.
+    func testLargeWholeNumbersArriveAsReals() throws {
+        XCTAssertEqual(try wildCardResult(of: "return 3000000000"), .double(3_000_000_000))
+    }
+
+    /// Verifies that a record written in the script decodes with its user-defined keys, and that a key
+    /// AppleScript owns as terminology arrives as the four-character code it was compiled to.
+    func testRecordKeysDecodeAsWrittenOrAsTheirCode() throws {
+        let result = try wildCardResult(of: #"return {name:"Roger", age:42, ratio:1.5}"#)
+        XCTAssertEqual(result, .record(["pnam": .string("Roger"), "age": .int(42), "ratio": .double(1.5)]))
+    }
+
+    /// Verifies that a list keeps one type per item, which is the whole point of the case.
+    func testListItemsKeepTheirOwnTypes() throws {
+        let result = try wildCardResult(of: #"return {1, "two", 3.5, missing value}"#)
+        XCTAssertEqual(result, .list([.int(1), .string("two"), .double(3.5), .missingValue]))
+    }
+}
+
 // MARK: - COMMAND-LINE EXECUTION
 
 final class CommandLineExecutionTests: XCTestCase {
@@ -295,6 +448,17 @@ final class CommandLineExecutionTests: XCTestCase {
             """
         )
         XCTAssertEqual(try AppleScriptBridge.executeAppleScriptViaCommandLine(script) as? String, "Roger R")
+    }
+
+    /// Verifies that `.wildCard` is refused here, since osascript prints text and the descriptor carrying the
+    /// actual type never reaches this method.
+    func testWildCardIsRefused() {
+        let script = AppleScriptBridge.AppleScriptObject(name: "wildCard", returnType: .wildCard, script: "return 1.5")
+        XCTAssertThrowsError(try AppleScriptBridge.executeAppleScriptViaCommandLine(script)) { error in
+            guard case AppleScriptBridge.AppleScriptError.unsupportedReturnType(.wildCard) = error else {
+                return XCTFail("Expected .unsupportedReturnType(.wildCard), got \(error)")
+            }
+        }
     }
 }
 
