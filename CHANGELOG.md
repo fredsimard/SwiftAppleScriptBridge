@@ -10,6 +10,8 @@ Nothing yet.
 
 ## [1.2.0] — 2026-08-29
 
+New API, all of it opt-in: the default path is unchanged. One caveat before you upgrade — `AppleScriptReturnType` and `AppleScriptError` each gained a case, so code that switches over either exhaustively, without a `default`, stops compiling until the new case is handled.
+
 ### Added
 
 - A `.wildCard` return type, for the properties that answer with a different *type* depending on state — the `value` of a cell in Numbers is a number, a date, text, a boolean, or `missing value`, the last one meaning the cell is empty. Every other return type coerces that distinction away before Swift sees it. `.wildCard` returns an `AppleScriptValue` built from the Apple event descriptor instead, so the type can be switched on. Closes [#5](https://github.com/fredsimard/SwiftAppleScriptBridge/issues/5).
@@ -23,7 +25,6 @@ Nothing yet.
 ### Notes
 
 - `.wildCard` works through `executeAppleScript(_:with:)` only. `osascript` prints its result as text, so the descriptor carrying the actual type is gone before `executeAppleScriptViaCommandLine(_:with:)` could read it; that method throws `.unsupportedReturnType` before launching the process, so the script does not run.
-- `AppleScriptError` gained a case. Code that switches over it exhaustively has to handle the new one.
 
 ## [1.1.0] — 2026-08-19
 
