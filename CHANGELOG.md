@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [1.2.0] — 2026-08-29
+
 ### Added
 
 - A `.wildCard` return type, for the properties that answer with a different *type* depending on state — the `value` of a cell in Numbers is a number, a date, text, a boolean, or `missing value`, the last one meaning the cell is empty. Every other return type coerces that distinction away before Swift sees it. `.wildCard` returns an `AppleScriptValue` built from the Apple event descriptor instead, so the type can be switched on. Closes [#5](https://github.com/fredsimard/SwiftAppleScriptBridge/issues/5).
@@ -83,7 +87,8 @@ First public release.
 - Ships in Swift 5 language mode. `AppleScriptObject` carries `[String: Any]`, which is not `Sendable`; a strict-concurrency redesign is planned for 2.0.
 - An app using this package cannot be sandboxed and so cannot ship on the Mac App Store. Developer ID signing and notarization are unaffected.
 
-[Unreleased]: https://github.com/fredsimard/SwiftAppleScriptBridge/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/fredsimard/SwiftAppleScriptBridge/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/fredsimard/SwiftAppleScriptBridge/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/fredsimard/SwiftAppleScriptBridge/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/fredsimard/SwiftAppleScriptBridge/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/fredsimard/SwiftAppleScriptBridge/releases/tag/v1.0.0
