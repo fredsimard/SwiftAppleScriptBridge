@@ -20,7 +20,13 @@ extension AppleScriptBridge {
     /// - `list`: A list of strings, typically separated by carriage returns in AppleScript.
     /// - `record`: A simple AppleScript record parsed into a Swift dictionary (limited to flat key-value pairs).
     /// - `json`: A more reliable and flexible format for complex or nested records, returned as a Swift dictionary.
+    /// - `wildCard`: Whatever the script returned, as an `AppleScriptValue` carrying its actual type rather than a declared one.
     /// - `none`: No return value is expected or needed.
+    ///
+    /// - Note: `.wildCard` is the one case that does not coerce. Use it for the properties that answer with a
+    /// different type depending on state — a number most of the time, a constant such as `missing value`
+    /// otherwise — where that type is itself the information. It needs the Apple event descriptor, which only
+    /// `executeAppleScript(_:with:)` has; `executeAppleScriptViaCommandLine(_:with:)` throws on it.
     public enum AppleScriptReturnType: Sendable {
         case int
         case string
@@ -28,6 +34,7 @@ extension AppleScriptBridge {
         case list
         case record
         case json
+        case wildCard
         case none
     }
 

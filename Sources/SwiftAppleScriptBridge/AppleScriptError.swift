@@ -19,6 +19,7 @@ extension AppleScriptBridge {
     ///   - `failedToInitScript`: The script could not be initialized or compiled.
     ///   - `failedToReadOutput`: The script executed, but its output could not be read or parsed.
     ///   - `executionError(String)`: The script failed to execute properly, with an error message.
+    ///   - `unsupportedReturnType(AppleScriptReturnType)`: The script declared a return type the execution method cannot produce.
     ///   - `genericMessage(String)`: A catch-all error with a custom message.
     ///
     /// - Property:
@@ -32,15 +33,17 @@ extension AppleScriptBridge {
         case failedToInitScript
         case failedToReadOutput
         case executionError(String)
+        case unsupportedReturnType(AppleScriptReturnType)
         case genericMessage(String)
 
         /// A human-readable, English explanation of the error, suitable for logging or developer-facing display.
         public var description: String {
             switch self {
-                case .failedToInitScript:                   return "Failed to initialize AppleScript script."
-                case .failedToReadOutput:                   return "Failed to read AppleScript script result."
-                case .executionError(let execErrorMessage): return "AppleScript execution error:\n" + execErrorMessage
-                case .genericMessage(let genericMessage):   return "\(genericMessage)"
+                case .failedToInitScript:                    return "Failed to initialize AppleScript script."
+                case .failedToReadOutput:                    return "Failed to read AppleScript script result."
+                case .executionError(let execErrorMessage):  return "AppleScript execution error:\n" + execErrorMessage
+                case .unsupportedReturnType(let returnType): return "The .\(returnType) return type is not supported by this execution method."
+                case .genericMessage(let genericMessage):    return "\(genericMessage)"
             }
         }
     }
