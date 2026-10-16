@@ -55,7 +55,7 @@ B. Or in a `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/fredsimard/SwiftAppleScriptBridge", from: "1.1.0")
+    .package(url: "https://github.com/fredsimard/SwiftAppleScriptBridge", from: "1.3.0")
 ]
 ```
 
@@ -209,6 +209,7 @@ Two things to know. AppleScript writes an empty list and an empty record identic
 | `.record` | `[String: Any]` — flat records only |
 | `.json` | `[String: Any]` — for nested structures; build the JSON inside the script |
 | `.wildCard` | `AppleScriptValue` — whatever the script returned, with its actual type |
+| `.osType` | `FourCharCode` — an application-defined constant, as its raw four-character code |
 | `.none` | `nil` |
 
 `.record` handles a flat `{name:"John", age:42}` and correctly leaves colons and commas that appear *inside* quoted values alone. For anything nested, build a JSON string in AppleScript and use `.json`.
@@ -255,6 +256,30 @@ A few things to know:
 - **Constants come as raw codes.** There is no general mapping from a four-character code to a meaning — what `'autp'` means is defined by the application's dictionary, not by AppleScript. Compare against the codes your target documents: `if case .constant("autp".appleScriptFourCharCode) = value`. `missing value` is the one exception, and gets a case of its own.
 - **Record keys are as written, or as compiled.** A key you wrote yourself comes through by name, but a key AppleScript recognizes as its own terminology is compiled to a four-character code before the script runs. `{name:"Roger", age:42}` decodes as `["pnam": .string("Roger"), "age": .int(42)]`.
 - **`NSAppleScript` only.** `executeAppleScriptViaCommandLine` throws `.unsupportedReturnType` on a `.wildCard` script, without running it. `osascript` prints its result as text, so the type is already gone by the time that method could read anything.
+
+#### When the answer is always a constant
+
+Some properties don't vary: a disk's `format` in the Finder, a range's `format` in Numbers, both documented in their dictionaries as enumerations. `.wildCard` reaches those as `.constant`, but you declared nothing and have to switch to get at the code. `.osType` declares it, and the code comes back on its own:
+
+```swift
+let script = AppleScriptBridge.AppleScriptObject(
+    name: "diskFormat",
+    returnType: .osType,
+    script: """
+        tell application id "com.apple.finder"
+            return format of disk "$diskName"
+        end tell
+    """
+)
+
+let code = try AppleScriptBridge.executeAppleScript(script, with: ["diskName": "Macintosh HD"]) as? FourCharCode
+
+if code == "dfap".appleScriptFourCharCode { print("APFS") }
+```
+
+The code is raw, like `.constant`'s: `'dfap'`, not the `APFS format` Script Editor shows you. There is no mapping to hand you — the terminology lives in each application's sdef, which the package cannot read at the point where a result comes back — so read the codes out of your target's dictionary and compare against those. `String(appleScriptFourCharCode:)` turns a code back into its text for logging, and `"dfap".appleScriptFourCharCode` builds one to compare against.
+
+Two things to expect: `nil` comes back when the result is not a constant at all, rather than a code assembled from unrelated bytes, and `missing value` arrives as the code `'msng'`, which compares against `FourCharCode(cMissingValue)`. Like `.wildCard`, `.osType` needs the Apple event descriptor, so `executeAppleScriptViaCommandLine` throws `.unsupportedReturnType` on it without running the script.
 
 ### Escaping, and how to opt out
 
