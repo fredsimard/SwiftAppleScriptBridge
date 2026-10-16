@@ -31,23 +31,23 @@ final class OSTypeDecodingTests: XCTestCase {
         XCTAssertEqual(descriptor.appleScriptOSType, FourCharCode(cMissingValue))
     }
 
-    /// Verifies that the few things AppleScript treats as constants in disguise are coerced: text of exactly
-    /// four characters, and a boolean, which is `'true'` or `'fals'` underneath.
-    func testCoercibleDescriptorsYieldACode() throws {
-        XCTAssertEqual(NSAppleEventDescriptor(string: "dfap").appleScriptOSType, try XCTUnwrap("dfap".appleScriptFourCharCode))
-        XCTAssertEqual(NSAppleEventDescriptor(boolean: true).appleScriptOSType, try XCTUnwrap("true".appleScriptFourCharCode))
-        XCTAssertEqual(NSAppleEventDescriptor(boolean: false).appleScriptOSType, try XCTUnwrap("fals".appleScriptFourCharCode))
-    }
-
     /// Verifies that a descriptor carrying no constant answers `nil`, rather than the code `enumCodeValue`
     /// would read out of unrelated bytes — `42` would otherwise arrive as the code `'\0\0\0*'`.
     func testNonConstantDescriptorsYieldNil() {
         XCTAssertNil(NSAppleEventDescriptor(int32: 42).appleScriptOSType)
         XCTAssertNil(NSAppleEventDescriptor(double: 3.5).appleScriptOSType)
-        XCTAssertNil(NSAppleEventDescriptor(string: "APFS format").appleScriptOSType)
         XCTAssertNil(NSAppleEventDescriptor.list().appleScriptOSType)
         // A constant-typed descriptor carrying nothing reads as four NUL bytes, which is not a code either.
         XCTAssertNil(NSAppleEventDescriptor(descriptorType: typeEnumerated, data: nil)?.appleScriptOSType)
+    }
+
+    /// Verifies that nothing is coerced, text of exactly four characters included. `coerce(toDescriptorType:)`
+    /// accepts some of these, but only where the process has the coercion handlers for it: `"dfap"` yields
+    /// `'dfap'` in a user session and nothing on a headless CI runner, which is why the type decides instead.
+    func testCoercibleDescriptorsAreNotCoerced() {
+        XCTAssertNil(NSAppleEventDescriptor(string: "dfap").appleScriptOSType)
+        XCTAssertNil(NSAppleEventDescriptor(string: "APFS format").appleScriptOSType)
+        XCTAssertNil(NSAppleEventDescriptor(boolean: true).appleScriptOSType)
     }
 
     /// Builds a descriptor of a given type carrying a four-character code, for the two types
@@ -87,6 +87,7 @@ final class OSTypeExecutionTests: XCTestCase {
     func testANonConstantResultYieldsNil() throws {
         XCTAssertNil(try osTypeResult(of: "return 42"))
         XCTAssertNil(try osTypeResult(of: #"return "APFS format""#))
+        XCTAssertNil(try osTypeResult(of: #"return "dfap""#), "text is not coerced, however much it looks like a code")
     }
 }
 

@@ -71,8 +71,8 @@ public class AppleScriptBridge: NSObject {
     /// event descriptor, so a script that answers with a different type depending on state can be switched on.
     ///
     /// - Note: `.osType` returns the raw `FourCharCode` of a script that answers with an application-defined
-    /// constant, or `nil` if what came back is not a constant. Compare it against the codes the target
-    /// application's dictionary documents: `code == "dfap".appleScriptFourCharCode`.
+    /// constant, or `nil` if what came back is not a constant — nothing is coerced into one. Compare it against
+    /// the codes the target application's dictionary documents: `code == "dfap".appleScriptFourCharCode`.
     ///
     /// - Note: A script returning `0` yields `0`, not `nil`. Failure is reported by throwing, so callers can tell
     /// "the target app answered zero" from "the target app did not answer" — a distinction that open-document

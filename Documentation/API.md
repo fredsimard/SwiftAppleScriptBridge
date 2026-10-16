@@ -187,11 +187,13 @@ if code == "dfap".appleScriptFourCharCode { … }
 |---|---|
 | A constant (`'enum'`, `'type'`, `'prop'`, `'keyw'`) | Its `FourCharCode`, raw. |
 | `missing value` | The code `'msng'`, comparable against `FourCharCode(cMissingValue)`. |
-| Text of exactly four characters, or a boolean | The code it coerces to — a boolean is `'true'` or `'fals'` underneath. |
-| Anything else — a number, a date, a list, longer text | `nil`, rather than a code read out of unrelated bytes. |
+| Anything else — a number, text, a date, a list | `nil`, rather than a code read out of unrelated bytes. |
 
 > [!NOTE]
 > The code is raw, as `.constant`'s is: `'dfap'`, not the `APFS format` Script Editor displays. The terminology lives in the application's sdef, which the package cannot read when a result comes back, so compare against the codes your target's dictionary documents. [`String.appleScriptFourCharCode`](#stringapplescriptfourcharcode--stringinitapplescriptfourcharcode) converts both ways.
+
+> [!NOTE]
+> Nothing is coerced, text that looks like a code included. `coerce(toDescriptorType:)` accepts some non-constants, but only where the process has the Apple event coercion handlers for it — `"dfap"` yields `'dfap'` in a user session and nothing on a headless CI runner — so the descriptor's own type decides and the answer is the same everywhere.
 
 ### `AppleScriptRawValue`
 

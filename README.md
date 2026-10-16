@@ -279,7 +279,7 @@ if code == "dfap".appleScriptFourCharCode { print("APFS") }
 
 The code is raw, like `.constant`'s: `'dfap'`, not the `APFS format` Script Editor shows you. There is no mapping to hand you — the terminology lives in each application's sdef, which the package cannot read at the point where a result comes back — so read the codes out of your target's dictionary and compare against those. `String(appleScriptFourCharCode:)` turns a code back into its text for logging, and `"dfap".appleScriptFourCharCode` builds one to compare against.
 
-Two things to expect: `nil` comes back when the result is not a constant at all, rather than a code assembled from unrelated bytes, and `missing value` arrives as the code `'msng'`, which compares against `FourCharCode(cMissingValue)`. Like `.wildCard`, `.osType` needs the Apple event descriptor, so `executeAppleScriptViaCommandLine` throws `.unsupportedReturnType` on it without running the script.
+Two things to expect: `nil` comes back when the result is not a constant at all — nothing is coerced, so text that looks like a code is `nil` too — and `missing value` arrives as the code `'msng'`, which compares against `FourCharCode(cMissingValue)`. Like `.wildCard`, `.osType` needs the Apple event descriptor, so `executeAppleScriptViaCommandLine` throws `.unsupportedReturnType` on it without running the script.
 
 ### Escaping, and how to opt out
 
