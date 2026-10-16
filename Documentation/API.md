@@ -161,7 +161,7 @@ How a script's result should be interpreted.
 | `.osType` | `FourCharCode` — an application-defined constant, as its raw four-character code |
 | `.none` | `nil` |
 
-`.wildCard` is the only case that does not coerce. It and `.osType` are the two `executeAppleScriptViaCommandLine(_:with:)` refuses, since both read the Apple event descriptor that method never sees.
+`.wildCard` and `.osType` are the two cases that do not coerce, and the two `executeAppleScriptViaCommandLine(_:with:)` refuses, since both read the Apple event descriptor that method never sees.
 
 #### `.osType`, when the answer is always a constant
 

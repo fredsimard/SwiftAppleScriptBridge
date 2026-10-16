@@ -216,7 +216,7 @@ Two things to know. AppleScript writes an empty list and an empty record identic
 
 #### When the type is the answer
 
-Every return type above coerces: you declare one, and whatever comes back is read as that. Some application properties don't work that way — they answer with a *different type* depending on state. The `value` of a cell in Numbers is documented as "number, date, text, boolean, or `missing value`", the last one meaning the cell is empty. Declare `.int` there and an empty cell is indistinguishable from a cell holding zero.
+Every return type above `.wildCard` coerces: you declare one, and whatever comes back is read as that. Some application properties don't work that way — they answer with a *different type* depending on state. The `value` of a cell in Numbers is documented as "number, date, text, boolean, or `missing value`", the last one meaning the cell is empty. Declare `.int` there and an empty cell is indistinguishable from a cell holding zero.
 
 `.wildCard` skips the coercion. The result comes back as an `AppleScriptValue` built from what the Apple event actually carried, so you switch on the type instead of assuming it:
 
