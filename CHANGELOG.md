@@ -8,6 +8,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 Nothing yet.
 
+## [1.3.0] — 2026-10-16
+
+One caveat before you upgrade — `AppleScriptReturnType` gained a case, so code that switches over it exhaustively, without a `default`, stops compiling until the new case is handled.
+
+### Added
+
+- An `.osType` return type, for the properties that always answer with an application-defined constant — a disk's `format` in the Finder, a range's `format` in Numbers, both documented in their dictionaries as enumerations. `.wildCard` already reached those as `AppleScriptValue.constant`, but the type had to be discovered at the call site to get at the code; declaring `.osType` hands the raw `FourCharCode` over directly. Closes [#7](https://github.com/fredsimard/SwiftAppleScriptBridge/issues/7).
+  - The code is raw, as `.constant`'s is: `'dfap'`, not the `APFS format` Script Editor displays. Terminology lives in each application's sdef, which the package cannot read at the point where a result comes back, so there is no mapping to hand the caller. Compare against the codes the target's dictionary documents, building one with `String.appleScriptFourCharCode`.
+  - `missing value` arrives as the code `'msng'`, comparable against `FourCharCode(cMissingValue)`, rather than being singled out as it is in `AppleScriptValue`.
+  - A result that is not a constant yields `nil`, not a code read out of unrelated bytes — which is what `NSAppleEventDescriptor.enumCodeValue` answers on its own for, say, an integer. Nothing is coerced either, text that looks like a code included: `coerce(toDescriptorType:)` accepts some non-constants, but only where the process has the Apple event coercion handlers for it, so the descriptor's own type decides and the answer does not change with the environment.
+
+### Notes
+
+- `.osType` works through `executeAppleScript(_:with:)` only, for the same reason `.wildCard` does: `osascript` prints a constant as the term its dictionary defines — `APFS format`, with the code nowhere in it. `executeAppleScriptViaCommandLine(_:with:)` throws `.unsupportedReturnType` before launching the process, so the script does not run.
+
 ## [1.2.0] — 2026-08-29
 
 New API, all of it opt-in: the default path is unchanged. One caveat before you upgrade — `AppleScriptReturnType` and `AppleScriptError` each gained a case, so code that switches over either exhaustively, without a `default`, stops compiling until the new case is handled.

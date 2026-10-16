@@ -17,6 +17,7 @@
 //
 
 import Foundation
+import Carbon
 import SwiftAppleScriptBridge
 
 /// Every AppleScript the app runs, in one place.
@@ -288,6 +289,28 @@ enum AppleScripts {
         """
     )
 
+    // MARK: - OSTYPE
+
+    /// Reads the same property as `diskFormat`, declaring up front that it answers with a constant.
+    ///
+    /// A disk's `format` is always one of the Finder's `edfm` constants, so there is no type to
+    /// discover at the call site — only a code to compare. `.osType` says so and hands the raw
+    /// `FourCharCode` over directly, where `.wildCard` would wrap it in `.constant` and leave the
+    /// caller to switch. Use `.wildCard` when the type varies, this when it does not.
+    ///
+    /// - Parameter diskName: **SET AT RUNTIME**: Name of the disk to inspect, without a colon.
+    /// - Returns: A `FourCharCode`: one of the codes the Finder's dictionary documents, `'msng'` if the
+    /// Finder has no format to report for that disk, or `nil` if what came back was not a constant at all.
+    static let diskFormatConstant = AppleScriptBridge.AppleScriptObject(
+        name: "diskFormatConstant",
+        returnType: .osType,
+        script: """
+            tell application id "\(targetApp)"
+                return format of disk "$diskName"
+            end tell
+        """
+    )
+
     // MARK: - VARIABLES AND RAW VALUES
 
     /// Creates a folder inside a parent folder, showing how the three placeholder forms differ.
@@ -452,6 +475,31 @@ enum FinderTasks {
             case .none:         return "the script failed"
             default:            return "unexpected type"
         }
+    }
+
+    /// Reads the filesystem format of a disk as its four-character code.
+    ///
+    /// The shape of an `.osType` call site, which is the whole point of the return type: one cast, then
+    /// a comparison against the codes the Finder's dictionary documents. Nothing to switch on, since the
+    /// property cannot answer with anything but a constant.
+    ///
+    /// `missing value` is a constant too, and `.osType` hands it over as the code `'msng'` rather than as
+    /// `nil` — so it has to be ruled out before a comparison can mean anything, or a disk the Finder
+    /// cannot describe would be reported as "some other format". Everything this function cannot read
+    /// collapses into `nil`; declare `.wildCard` instead where a failed script, an absent value and an
+    /// unexpected type have to be told apart.
+    ///
+    /// - Parameter name: The disk to inspect, for example `"Macintosh HD"`.
+    /// - Returns: `true` if the disk is APFS-formatted, `false` for any other format the Finder names,
+    /// `nil` if the script failed or the Finder reported no format at all.
+    static func isAPFS(disk name: String) -> Bool? {
+        let result = try? AppleScriptBridge.executeAppleScript(
+            AppleScripts.diskFormatConstant,
+            with: ["diskName": name]
+        )
+
+        guard let code = result as? FourCharCode, code != FourCharCode(cMissingValue) else { return nil }
+        return code == "dfap".appleScriptFourCharCode
     }
 
     /// Moves several items to a destination folder.

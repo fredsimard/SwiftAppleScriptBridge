@@ -211,3 +211,33 @@ extension AppleScriptBridge.AppleScriptValue {
         return fields
     }
 }
+
+// MARK: - READING CONSTANTS
+
+extension NSAppleEventDescriptor {
+
+    /// The four-character code this descriptor carries as an Apple event constant.
+    ///
+    /// A constant arrives as one of the four descriptor types that carry a code — `typeEnumerated`,
+    /// `typeType`, `typeProperty`, `typeKeyword` — and only those are read. Anything else answers `nil`,
+    /// rather than the code `enumCodeValue` would assemble from unrelated bytes: it reads four bytes wherever
+    /// it is asked, so an integer `42` would otherwise arrive as the code `'\0\0\0*'`.
+    ///
+    /// Nothing is coerced. `coerce(toDescriptorType:)` does accept a few things as constants in disguise —
+    /// text of exactly four characters, a boolean — but whether it does depends on the Apple event coercion
+    /// handlers available to the process, which differ between a user session and a headless one. A result
+    /// that changes with the environment is worse than no result, so the descriptor's own type decides.
+    ///
+    /// - Returns: The code, or `nil` if the descriptor is not a constant.
+    var appleScriptOSType: FourCharCode? {
+        switch descriptorType {
+            // `enumCodeValue` and `typeCodeValue` read the same four bytes; either serves all four types.
+            case typeType, typeEnumerated, typeProperty, typeKeyword:
+                // Four NUL bytes is what an unreadable descriptor answers, and no dictionary documents that.
+                return enumCodeValue == 0 ? nil : enumCodeValue
+
+            default:
+                return nil
+        }
+    }
+}

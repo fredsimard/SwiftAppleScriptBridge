@@ -21,12 +21,19 @@ extension AppleScriptBridge {
     /// - `record`: A simple AppleScript record parsed into a Swift dictionary (limited to flat key-value pairs).
     /// - `json`: A more reliable and flexible format for complex or nested records, returned as a Swift dictionary.
     /// - `wildCard`: Whatever the script returned, as an `AppleScriptValue` carrying its actual type rather than a declared one.
+    /// - `osType`: An application-defined constant, as the raw `FourCharCode` the Apple event carried.
     /// - `none`: No return value is expected or needed.
     ///
     /// - Note: `.wildCard` is the one case that does not coerce. Use it for the properties that answer with a
     /// different type depending on state — a number most of the time, a constant such as `missing value`
     /// otherwise — where that type is itself the information. It needs the Apple event descriptor, which only
     /// `executeAppleScript(_:with:)` has; `executeAppleScriptViaCommandLine(_:with:)` throws on it.
+    ///
+    /// - Note: `.osType` is for the properties that always answer with a constant — a disk's `format` in the
+    /// Finder, a range's `format` in Numbers, both documented in their dictionaries as enumerations. `.wildCard`
+    /// reaches those too, as `AppleScriptValue.constant`, but declaring the type up front hands the code over
+    /// directly instead of through a switch. It reads the same descriptor, so it has the same restriction:
+    /// `executeAppleScriptViaCommandLine(_:with:)` throws on it.
     public enum AppleScriptReturnType: Sendable {
         case int
         case string
@@ -35,6 +42,7 @@ extension AppleScriptBridge {
         case record
         case json
         case wildCard
+        case osType
         case none
     }
 

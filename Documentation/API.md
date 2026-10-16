@@ -59,7 +59,7 @@ Compiles and runs a script with `NSAppleScript`, and interprets the result accor
 | `AppleScript` | The script object to execute. |
 | `runtimeVariables` | Variables resolved at call time, overriding the object's predefined ones of the same name. Defaults to `nil`. |
 
-**Returns** the script's result cast to the declared type — `Int`, `String`, `Bool`, `[String]`, `[String: Any]`, [`AppleScriptValue`](#applescriptvalue) for `.wildCard`, or `nil` for `.none`.
+**Returns** the script's result cast to the declared type — `Int`, `String`, `Bool`, `[String]`, `[String: Any]`, [`AppleScriptValue`](#applescriptvalue) for `.wildCard`, `FourCharCode` for `.osType`, or `nil` for `.none`.
 
 **Throws**
 
@@ -83,7 +83,7 @@ public static func executeAppleScriptViaCommandLine(
 ) throws -> Any?
 ```
 
-Runs the same script through `/usr/bin/osascript` in a subprocess instead. Useful if you hit an `NSAppleScript` quirk, or want a long script isolated from your process. Parameters and return values match `executeAppleScript(_:with:)`, with three differences: `.list` splits on `\r` rather than on newlines, a failing script does not throw — only a launch failure or undecodable output does — and `.wildCard` is refused.
+Runs the same script through `/usr/bin/osascript` in a subprocess instead. Useful if you hit an `NSAppleScript` quirk, or want a long script isolated from your process. Parameters and return values match `executeAppleScript(_:with:)`, with three differences: `.list` splits on `\r` rather than on newlines, a failing script does not throw — only a launch failure or undecodable output does — and `.wildCard` and `.osType` are refused.
 
 **Throws**
 
@@ -91,7 +91,7 @@ Runs the same script through `/usr/bin/osascript` in a subprocess instead. Usefu
 |---|---|
 | `AppleScriptError.executionError` | The process failed to launch. |
 | `AppleScriptError.failedToReadOutput` | The output was not valid UTF-8. |
-| `AppleScriptError.unsupportedReturnType` | The script declared `.wildCard`. Checked before the process is launched, so the script does not run. |
+| `AppleScriptError.unsupportedReturnType` | The script declared `.wildCard` or `.osType`. Checked before the process is launched, so the script does not run. |
 
 > [!WARNING]
 > Script errors are **not** detected. `stderr` is piped into the same pipe as `stdout` and the exit status is ignored, so a failing script returns osascript's error text as if it were a result — a `.string` call yields the error message, an `.int` call yields `nil`. Validate what comes back if you use this method.
@@ -158,9 +158,42 @@ How a script's result should be interpreted.
 | `.record` | `[String: Any]` — flat records only |
 | `.json` | `[String: Any]` — for nested structures; build the JSON inside the script |
 | `.wildCard` | [`AppleScriptValue`](#applescriptvalue) — the result with its actual type, uncoerced |
+| `.osType` | `FourCharCode` — an application-defined constant, as its raw four-character code |
 | `.none` | `nil` |
 
-`.wildCard` is the only case that does not coerce, and the only one `executeAppleScriptViaCommandLine(_:with:)` refuses.
+`.wildCard` and `.osType` are the two cases that do not coerce, and the two `executeAppleScriptViaCommandLine(_:with:)` refuses, since both read the Apple event descriptor that method never sees.
+
+#### `.osType`, when the answer is always a constant
+
+`.wildCard` carries a constant as `.constant(FourCharCode)`, which is right when the type varies. Where it does not — a disk's `format` in the Finder, a range's `format` in Numbers — `.osType` declares it and the code comes back directly:
+
+```swift
+let script = AppleScriptBridge.AppleScriptObject(
+    name: "diskFormat",
+    returnType: .osType,
+    script: """
+        tell application id "com.apple.finder"
+            return format of disk "$diskName"
+        end tell
+    """
+)
+
+let code = try AppleScriptBridge.executeAppleScript(script, with: ["diskName": "Macintosh HD"]) as? FourCharCode
+
+if code == "dfap".appleScriptFourCharCode { … }
+```
+
+| What the script answered | What comes back |
+|---|---|
+| A constant (`'enum'`, `'type'`, `'prop'`, `'keyw'`) | Its `FourCharCode`, raw. |
+| `missing value` | The code `'msng'`, comparable against `FourCharCode(cMissingValue)`. |
+| Anything else — a number, text, a date, a list | `nil`, rather than a code read out of unrelated bytes. |
+
+> [!NOTE]
+> The code is raw, as `.constant`'s is: `'dfap'`, not the `APFS format` Script Editor displays. The terminology lives in the application's sdef, which the package cannot read when a result comes back, so compare against the codes your target's dictionary documents. [`String.appleScriptFourCharCode`](#stringapplescriptfourcharcode--stringinitapplescriptfourcharcode) converts both ways.
+
+> [!NOTE]
+> Nothing is coerced, text that looks like a code included. `coerce(toDescriptorType:)` accepts some non-constants, but only where the process has the Apple event coercion handlers for it — `"dfap"` yields `'dfap'` in a user session and nothing on a headless CI runner — so the descriptor's own type decides and the answer is the same everywhere.
 
 ### `AppleScriptRawValue`
 
@@ -284,7 +317,7 @@ What a `.wildCard` script returns. Built from the Apple event descriptor's own t
 > Record keys come through as the caller wrote them only when AppleScript did not recognize them as terminology. `{name:"Roger", age:42}` decodes as `["pnam": .string("Roger"), "age": .int(42)]`, because `name` compiles to the `'pnam'` property. Application-returned records are terminology throughout, so expect codes there.
 
 > [!NOTE]
-> A constant carries no meaning of its own: what `'autp'` means comes from the application's dictionary. Compare it against the codes your target documents.
+> A constant carries no meaning of its own: what `'autp'` means comes from the application's dictionary. Compare it against the codes your target documents. For a property that always answers with one, [`.osType`](#ostype-when-the-answer-is-always-a-constant) hands the code over without the switch.
 
 ### `init(descriptor:)`
 
@@ -317,7 +350,7 @@ public enum AppleScriptError: Error {
 | `failedToInitScript` | The script could not be compiled. |
 | `failedToReadOutput` | It ran, but the output could not be read. |
 | `executionError(String)` | It ran and returned an error, carried as text. |
-| `unsupportedReturnType(AppleScriptReturnType)` | The execution method cannot produce the declared type. Today that is `.wildCard` through `executeAppleScriptViaCommandLine(_:with:)`. |
+| `unsupportedReturnType(AppleScriptReturnType)` | The execution method cannot produce the declared type. Today that is `.wildCard` and `.osType` through `executeAppleScriptViaCommandLine(_:with:)`. |
 | `genericMessage(String)` | A catch-all with your own message, for your code to throw. |
 
 ### `description`

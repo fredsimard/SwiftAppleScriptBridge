@@ -3,9 +3,9 @@
 //  SwiftAppleScriptBridge
 //
 //  Tests cover the pure, deterministic parts of the bridge: escaping, placeholder substitution and result
-//  parsing. Script execution itself is not tested, since it needs a scriptable application and a
-//  user-granted Automation permission. The one exception is `CommandLineExecutionTests`, which runs
-//  self-contained scripts through `osascript`: they drive no application, so they need no permission.
+//  parsing. Driving an application is not tested, since that needs a scriptable application and a
+//  user-granted Automation permission. The execution suites get around it by running self-contained
+//  scripts, which drive no application and so need no permission.
 //
 
 import XCTest
